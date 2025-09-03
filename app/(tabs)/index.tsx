@@ -1,75 +1,422 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
-
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+import React, { useState } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ScrollView, 
+  StatusBar 
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
+  const [selectedSession, setSelectedSession] = useState('Morning');
+  
+  // Mock data - replace with your actual data
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+
+  const sessions = [
+    { name: 'Morning', icon: 'sunny-outline' },
+    { name: 'Lunch Dismissal', icon: 'restaurant-outline' },
+    { name: 'After Lunch', icon: 'cafe-outline' },
+    { name: 'Dismissal', icon: 'home-outline' }
+  ];
+  
+  const stats = {
+    total: 32,
+    present: 28,
+    male: 15,
+    female: 13
+  };
+
+  const recentScans = [
+    { name: 'Juan Dela Cruz', time: '7:45 AM', status: 'present' },
+    { name: 'Maria Santos', time: '7:46 AM', status: 'present' },
+    { name: 'Pedro Gonzalez', time: '7:47 AM', status: 'present' },
+    { name: 'Ana Rodriguez', time: '7:48 AM', status: 'present' },
+  ];
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.container}>
+      {/* Gradient Background Layers */}
+      <View style={styles.gradientLayer1} />
+      <View style={styles.gradientLayer2} />
+      <View style={styles.gradientLayer3} />
+      
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+          
+          {/* Top Section */}
+          <View style={styles.topSection}>
+            <Text style={styles.sectionTitle}>Grade 10 – Section A</Text>
+            <Text style={styles.dateText}>{currentDate}</Text>
+            
+            {/* Session Selector */}
+            <View style={styles.sessionContainer}>
+              {sessions.map((session) => (
+                <TouchableOpacity
+                  key={session.name}
+                  style={[
+                    styles.sessionButton,
+                    selectedSession === session.name && styles.sessionButtonActive
+                  ]}
+                  onPress={() => setSelectedSession(session.name)}
+                >
+                  <View style={styles.sessionButtonContent}>
+                    <Ionicons 
+                      name={session.icon} 
+                      size={16} 
+                      color={selectedSession === session.name ? '#10B981' : '#6B7280'} 
+                    />
+                    <Text style={[
+                      styles.sessionButtonText,
+                      selectedSession === session.name && styles.sessionButtonTextActive
+                    ]}>
+                      {session.name}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Middle Section */}
+          <View style={styles.middleSection}>
+            {/* Big Scan QR Button with Gradient Effect */}
+            <View style={styles.scanButtonContainer}>
+              <View style={styles.scanButtonGradient} />
+              <TouchableOpacity style={styles.scanButton}>
+                <View style={styles.scanButtonContent}>
+                  <Ionicons name="qr-code-outline" size={48} color="#FFFFFF" />
+                  <Text style={styles.scanButtonText}>Scan QR Code</Text>
+                  <Text style={styles.scanButtonSubtext}>Tap to scan student attendance</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+
+            {/* Stats Card */}
+            <View style={styles.statsCard}>
+              <View style={styles.statsHeader}>
+                <Text style={styles.statsTitle}>Attendance Overview</Text>
+                <Text style={styles.sessionLabel}>{selectedSession}</Text>
+              </View>
+              
+              <View style={styles.statsGrid}>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{stats.total}</Text>
+                  <Text style={styles.statLabel}>Total Students</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={[styles.statNumber, styles.presentNumber]}>{stats.present}</Text>
+                  <Text style={styles.statLabel}>Present</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{stats.male}</Text>
+                  <Text style={styles.statLabel}>Male</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statNumber}>{stats.female}</Text>
+                  <Text style={styles.statLabel}>Female</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Bottom Section - Recent Scans */}
+          <View style={styles.bottomSection}>
+            <Text style={styles.recentTitle}>Recent Scans</Text>
+            <View style={styles.recentList}>
+              {recentScans.map((scan, index) => (
+                <View key={index} style={styles.recentItem}>
+                  <View style={styles.recentItemLeft}>
+                    <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                    <Text style={styles.recentName}>{scan.name}</Text>
+                  </View>
+                  <Text style={styles.recentTime}>{scan.time}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  container: {
+    flex: 1,
+    position: 'relative',
+  },
+  
+  // Gradient Background Layers
+  gradientLayer1: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#F0FDF4',
+  },
+  gradientLayer2: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: '60%',
+    bottom: '40%',
+    backgroundColor: '#ECFDF5',
+    borderBottomRightRadius: 100,
+  },
+  gradientLayer3: {
+    position: 'absolute',
+    top: '60%',
+    left: '40%',
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#D1FAE5',
+    borderTopLeftRadius: 100,
+    opacity: 0.7,
+  },
+  
+  safeArea: {
+    flex: 1,
+    zIndex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  
+  // Top Section
+  topSection: {
+    padding: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(229, 231, 235, 0.3)',
+    marginHorizontal: 10,
+    marginTop: 10,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 20,
+  },
+  sessionContainer: {
     flexDirection: 'row',
+    backgroundColor: 'rgba(254, 243, 199, 0.9)',
+    borderRadius: 12,
+    padding: 4,
+    gap: 2,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  sessionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 50,
+  },
+  sessionButtonActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sessionButtonContent: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  sessionButtonText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 14,
+  },
+  sessionButtonTextActive: {
+    color: '#047857',
+    fontWeight: '600',
+  },
+
+  // Middle Section
+  middleSection: {
+    padding: 20,
+    gap: 20,
+  },
+  
+  // Scan Button with Custom Gradient
+  scanButtonContainer: {
+    position: 'relative',
+    borderRadius: 20,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  scanButtonGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#10B981',
+    borderRadius: 20,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  scanButton: {
+    padding: 28,
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+  },
+  scanButtonContent: {
     alignItems: 'center',
     gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  scanButtonText: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  scanButtonSubtext: {
+    fontSize: 14,
+    color: '#D1FAE5',
+    textAlign: 'center',
+  },
+
+  // Stats Card
+  statsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  sessionLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1F2937',
+    backgroundColor: 'rgba(254, 243, 199, 0.8)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statNumber: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  presentNumber: {
+    color: '#10B981',
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+
+  // Bottom Section
+  bottomSection: {
+    padding: 20,
+    paddingBottom: 100,
+  },
+  recentTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 12,
+  },
+  recentList: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  recentItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(243, 244, 246, 0.5)',
+  },
+  recentItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  recentName: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  recentTime: {
+    fontSize: 12,
+    color: '#6B7280',
   },
 });
