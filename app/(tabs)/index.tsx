@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -12,13 +12,30 @@ import { Ionicons } from '@expo/vector-icons';
 
 export default function HomeScreen() {
   const [selectedSession, setSelectedSession] = useState('Morning');
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
   
-  // Mock data - replace with your actual data
-  const currentDate = new Date().toLocaleDateString('en-US', {
+  // Update time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentDateTime(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+  
+  // Format date and time using Philippine locale
+  const currentDate = currentDateTime.toLocaleDateString('en-PH', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric'
+  });
+  
+  const currentTime = currentDateTime.toLocaleTimeString('en-PH', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
   });
 
   const sessions = [
@@ -55,8 +72,12 @@ export default function HomeScreen() {
           
           {/* Top Section */}
           <View style={styles.topSection}>
-            <Text style={styles.sectionTitle}>Grade 10 – Section A</Text>
-            <Text style={styles.dateText}>{currentDate}</Text>
+            <Text style={styles.sectionTitle}>IDAS - Attendance Checker</Text>
+            <Text style={styles.subSectionTitle}>Grade 10 – Section A</Text>
+            <View style={styles.dateTimeContainer}>
+              <Text style={styles.dateText}>{currentDate}</Text>
+              <Text style={styles.timeText}>{currentTime}</Text>
+            </View>
             
             {/* Session Selector */}
             <View style={styles.sessionContainer}>
@@ -209,15 +230,37 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#1F2937',
+    marginBottom: 6,
+    letterSpacing: -0.5,
+  },
+  subSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#059669',
     marginBottom: 4,
+    letterSpacing: 0.2,
+  },
+  dateTimeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   dateText: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '500',
     color: '#6B7280',
-    marginBottom: 20,
+    letterSpacing: 0.1,
+  },
+  timeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#059669',
+    letterSpacing: 0.1,
+    textAlign: 'right',
   },
   sessionContainer: {
     flexDirection: 'row',
