@@ -1,35 +1,50 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, Alert, TouchableOpacity, Modal, Animated, StatusBar, Platform, ScrollView, Dimensions } from 'react-native';
-import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  Alert,
+  TouchableOpacity,
+  Modal,
+  Animated,
+  StatusBar,
+  Platform,
+  ScrollView,
+  Dimensions,
+} from "react-native";
+import { CameraView, Camera, useCameraPermissions } from "expo-camera";
+import { ThemedText } from "@/components/ThemedText";
+import { ThemedView } from "@/components/ThemedView";
+import { LinearGradient } from "expo-linear-gradient";
+import { useStudentsDb } from "../../hooks/useStudentsDb";
+import { useAttendanceDb } from "../../hooks/useAttendanceDb";
+import { useFocusEffect } from '@react-navigation/native';
 
 const ATTENDANCE_TYPES = [
-  { id: 'morning', label: 'Morning', color: '#4CAF50' },
-  { id: 'lunch_dismissal', label: 'Lunch', color: '#FF9800' },
-  { id: 'after_lunch', label: 'After Lunch', color: '#2196F3' },
-  { id: 'dismissal', label: 'Dismissal', color: '#9C27B0' }
+  { id: "morning", label: "Morning", color: "#4CAF50" },
+  { id: "lunch_dismissal", label: "Lunch", color: "#FF9800" },
+  { id: "after_lunch", label: "After Lunch", color: "#2196F3" },
+  { id: "dismissal", label: "Dismissal", color: "#9C27B0" },
 ];
 
 // Get responsive dimensions
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
 
 // Responsive breakpoints
 const BREAKPOINTS = {
   small: 360,
   medium: 600,
   large: 900,
-  xlarge: 1200
+  xlarge: 1200,
 };
 
 // Helper functions for responsive design
 const getScreenSize = (width) => {
-  if (width < BREAKPOINTS.small) return 'xs';
-  if (width < BREAKPOINTS.medium) return 'sm';
-  if (width < BREAKPOINTS.large) return 'md';
-  if (width < BREAKPOINTS.xlarge) return 'lg';
-  return 'xl';
+  if (width < BREAKPOINTS.small) return "xs";
+  if (width < BREAKPOINTS.medium) return "sm";
+  if (width < BREAKPOINTS.large) return "md";
+  if (width < BREAKPOINTS.xlarge) return "lg";
+  return "xl";
 };
 
 const isTablet = screenWidth >= BREAKPOINTS.medium;
@@ -43,56 +58,87 @@ const responsive = {
     sm: 16,
     md: 20,
     lg: 24,
-    xl: 28
+    xl: 28,
   },
   fontSize: {
     xs: { small: 12, medium: 16, large: 20, xlarge: 24 },
     sm: { small: 14, medium: 18, large: 22, xlarge: 26 },
     md: { small: 16, medium: 20, large: 24, xlarge: 28 },
     lg: { small: 18, medium: 22, large: 26, xlarge: 30 },
-    xl: { small: 20, medium: 24, large: 28, xlarge: 32 }
+    xl: { small: 20, medium: 24, large: 28, xlarge: 32 },
   },
   cameraSize: {
     xs: Math.min(screenWidth * 0.8, 280),
     sm: Math.min(screenWidth * 0.75, 320),
     md: Math.min(screenWidth * 0.6, 360),
     lg: Math.min(screenWidth * 0.5, 400),
-    xl: Math.min(screenWidth * 0.4, 450)
-  }
+    xl: Math.min(screenWidth * 0.4, 450),
+  },
 };
 
 export default function Scan() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
-  const [selectedAttendanceType, setSelectedAttendanceType] = useState('morning');
+  const [selectedAttendanceType, setSelectedAttendanceType] = useState("morning");
   const [modalVisible, setModalVisible] = useState(false);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [scannedData, setScannedData] = useState(null);
   const [countdown, setCountdown] = useState(5);
-  const [dimensions, setDimensions] = useState(Dimensions.get('window'));
-  
+  const [errorCountdown, setErrorCountdown] = useState(3);
+  const [dimensions, setDimensions] = useState(Dimensions.get("window"));
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const { checkScannedStudent } = useStudentsDb();
+  const [studentInfo, setStudentInfo] = useState(null);
+
+  const { markAttendance, getTodayStats } = useAttendanceDb();
+
   // Mock attendance data
   const [attendanceStats, setAttendanceStats] = useState({
-    totalMales: 32,
-    totalFemales: 27,
-    absentMales: 8,
-    absentFemales: 5
+    presentMales: 0,
+    presentFemales: 0,
+    absentMales: 0,
+    absentFemales: 0,
+    totalMales: 0,
+    totalFemales: 0,
+    totalPresent: 0,
+    totalAbsent: 0,
   });
-  
+
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
+  const errorFadeAnim = useRef(new Animated.Value(0)).current;
+  const errorScaleAnim = useRef(new Animated.Value(0.8)).current;
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const buttonPressAnim = useRef(new Animated.Value(1)).current;
 
   // Handle orientation changes
   useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+    const subscription = Dimensions.addEventListener("change", ({ window }) => {
       setDimensions(window);
     });
 
     return () => subscription?.remove();
   }, []);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      let isActive = true;
+  
+      const fetchStats = async () => {
+        const stats = await getTodayStats(selectedAttendanceType);
+        if (isActive) setAttendanceStats(stats);
+      };
+  
+      fetchStats();
+  
+      return () => {
+        isActive = false; // cleanup
+      };
+    }, [selectedAttendanceType])
+  );
+  
   // Recalculate responsive values on dimension change
   const currentScreenSize = getScreenSize(dimensions.width);
   const currentIsTablet = dimensions.width >= BREAKPOINTS.medium;
@@ -118,7 +164,7 @@ export default function Scan() {
     return () => scanAnimation.stop();
   }, []);
 
-  // Auto-close modal after 5 seconds
+  // Auto-close success modal after 5 seconds
   useEffect(() => {
     let timer;
     if (modalVisible && countdown > 0) {
@@ -131,7 +177,20 @@ export default function Scan() {
     return () => clearTimeout(timer);
   }, [modalVisible, countdown]);
 
-  // Modal animation
+  // Auto-close error modal after 3 seconds
+  useEffect(() => {
+    let timer;
+    if (errorModalVisible && errorCountdown > 0) {
+      timer = setTimeout(() => {
+        setErrorCountdown(errorCountdown - 1);
+      }, 1000);
+    } else if (errorModalVisible && errorCountdown === 0) {
+      handleCloseErrorModal();
+    }
+    return () => clearTimeout(timer);
+  }, [errorModalVisible, errorCountdown]);
+
+  // Success modal animation
   useEffect(() => {
     if (modalVisible) {
       setCountdown(5);
@@ -164,12 +223,59 @@ export default function Scan() {
     }
   }, [modalVisible]);
 
+  // Error modal animation
+  useEffect(() => {
+    if (errorModalVisible) {
+      setErrorCountdown(3);
+      Animated.parallel([
+        Animated.timing(errorFadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(errorScaleAnim, {
+          toValue: 1,
+          tension: 60,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(errorFadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(errorScaleAnim, {
+          toValue: 0.8,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [errorModalVisible]);
+
   if (!permission) {
     return (
       <ThemedView style={[styles.container, getResponsiveStyles().container]}>
-        <View style={[styles.loadingContainer, getResponsiveStyles().loadingContainer]}>
-          <Text style={[styles.loadingText, getResponsiveStyles().loadingText]}>📷</Text>
-          <ThemedText style={[styles.loadingSubtext, getResponsiveStyles().loadingSubtext]}>Loading camera permissions...</ThemedText>
+        <View
+          style={[
+            styles.loadingContainer,
+            getResponsiveStyles().loadingContainer,
+          ]}
+        >
+          <Text style={[styles.loadingText, getResponsiveStyles().loadingText]}>
+            📷
+          </Text>
+          <ThemedText
+            style={[
+              styles.loadingSubtext,
+              getResponsiveStyles().loadingSubtext,
+            ]}
+          >
+            Loading camera permissions...
+          </ThemedText>
         </View>
       </ThemedView>
     );
@@ -178,20 +284,57 @@ export default function Scan() {
   if (!permission.granted) {
     return (
       <ThemedView style={[styles.container, getResponsiveStyles().container]}>
-        <View style={[styles.permissionContainer, getResponsiveStyles().permissionContainer]}>
-          <Text style={[styles.permissionIcon, getResponsiveStyles().permissionIcon]}>🔒</Text>
-          <ThemedText style={[styles.permissionTitle, getResponsiveStyles().permissionTitle]}>Camera Permission Required</ThemedText>
-          <ThemedText style={[styles.permissionMessage, getResponsiveStyles().permissionMessage]}>
+        <View
+          style={[
+            styles.permissionContainer,
+            getResponsiveStyles().permissionContainer,
+          ]}
+        >
+          <Text
+            style={[
+              styles.permissionIcon,
+              getResponsiveStyles().permissionIcon,
+            ]}
+          >
+            🔒
+          </Text>
+          <ThemedText
+            style={[
+              styles.permissionTitle,
+              getResponsiveStyles().permissionTitle,
+            ]}
+          >
+            Camera Permission Required
+          </ThemedText>
+          <ThemedText
+            style={[
+              styles.permissionMessage,
+              getResponsiveStyles().permissionMessage,
+            ]}
+          >
             We need camera access to scan QR codes for attendance tracking
           </ThemedText>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+          <TouchableOpacity
+            style={styles.permissionButton}
+            onPress={requestPermission}
+          >
             <LinearGradient
-              colors={['#667eea', '#764ba2']}
-              style={[styles.permissionButtonGradient, getResponsiveStyles().permissionButtonGradient]}
+              colors={["#667eea", "#764ba2"]}
+              style={[
+                styles.permissionButtonGradient,
+                getResponsiveStyles().permissionButtonGradient,
+              ]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Text style={[styles.permissionButtonText, getResponsiveStyles().permissionButtonText]}>Grant Camera Permission</Text>
+              <Text
+                style={[
+                  styles.permissionButtonText,
+                  getResponsiveStyles().permissionButtonText,
+                ]}
+              >
+                Grant Camera Permission
+              </Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -199,22 +342,64 @@ export default function Scan() {
     );
   }
 
-  const handleBarcodeScanned = ({ type, data }) => {
+  const handleBarcodeScanned = async ({ type, data }) => {
     setScanned(true);
-    setScannedData({ type, data });
-    setModalVisible(true);
+
+    try {
+      // check if student exists in DB
+      const student = await checkScannedStudent(data);
+
+      if (student) {
+        setStudentInfo(student);
+
+        // ✅ Try to save attendance in DB
+        await markAttendance(student.id, selectedAttendanceType);
+
+        // If successful, fetch updated stats and show success modal
+        const stats = await getTodayStats(selectedAttendanceType);
+        setAttendanceStats(stats);
+        setModalVisible(true);
+
+      } else {
+        setErrorMessage("Student not found in database");
+        setErrorModalVisible(true);
+        setScanned(false);
+      }
+    } catch (error) {
+      console.error("Attendance error:", error);
+      
+      // Handle different types of errors
+      if (error.message.includes("already recorded")) {
+        setErrorMessage("Attendance already recorded for this student in this session today");
+      } else {
+        setErrorMessage("Failed to record attendance. Please try again.");
+      }
+      
+      setErrorModalVisible(true);
+      setScanned(false);
+    }
   };
 
   const handleCloseModal = () => {
     setModalVisible(false);
     setScanned(false);
-    setScannedData(null);
+    setStudentInfo(null); // reset
     fadeAnim.setValue(0);
     scaleAnim.setValue(0.8);
   };
 
+  const handleCloseErrorModal = () => {
+    setErrorModalVisible(false);
+    setErrorMessage("");
+    errorFadeAnim.setValue(0);
+    errorScaleAnim.setValue(0.8);
+  };
+
   const getSelectedAttendanceType = () => {
-    return ATTENDANCE_TYPES.find(type => type.id === selectedAttendanceType) || ATTENDANCE_TYPES[0];
+    return (
+      ATTENDANCE_TYPES.find((type) => type.id === selectedAttendanceType) ||
+      ATTENDANCE_TYPES[0]
+    );
   };
 
   const handleAttendanceTypeSelect = (typeId) => {
@@ -231,7 +416,7 @@ export default function Scan() {
         useNativeDriver: true,
       }),
     ]).start();
-    
+
     setSelectedAttendanceType(typeId);
   };
 
@@ -284,12 +469,12 @@ export default function Scan() {
       },
       statsContainer: {
         marginBottom: padding,
-        flexDirection: currentIsLandscape && currentIsTablet ? 'row' : 'column',
-        justifyContent: 'space-between',
+        flexDirection: currentIsLandscape && currentIsTablet ? "row" : "column",
+        justifyContent: "space-between",
       },
       statsRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        flexDirection: "row",
+        justifyContent: "space-between",
         marginBottom: currentIsLandscape && currentIsTablet ? 0 : 12,
         flex: currentIsLandscape && currentIsTablet ? 1 : undefined,
         marginHorizontal: currentIsLandscape && currentIsTablet ? 4 : 0,
@@ -322,8 +507,8 @@ export default function Scan() {
       attendanceButtonGradient: {
         paddingHorizontal: padding * 0.4,
         paddingVertical: padding * 0.3,
-        alignItems: 'center',
-        justifyContent: 'center',
+        alignItems: "center",
+        justifyContent: "center",
         minHeight: currentIsTablet ? 36 : 32,
       },
       attendanceButtonText: {
@@ -381,88 +566,168 @@ export default function Scan() {
   return (
     <ThemedView style={[styles.container, responsiveStyles.container]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
+
       {/* Header Section */}
       <View style={styles.header}>
         <LinearGradient
-          colors={['#f8f9fa', '#ffffff']}
+          colors={["#f8f9fa", "#ffffff"]}
           style={[styles.headerGradient, responsiveStyles.headerGradient]}
         >
-          <Text style={[styles.headerTitle, responsiveStyles.headerTitle]}>Attendance Today</Text>
-          
+          <Text style={[styles.headerTitle, responsiveStyles.headerTitle]}>
+            Attendance Today
+          </Text>
+
           {/* Attendance Statistics */}
-          <View style={[styles.statsContainer, responsiveStyles.statsContainer]}>
+          <View
+            style={[styles.statsContainer, responsiveStyles.statsContainer]}
+          >
             <View style={[styles.statsRow, responsiveStyles.statsRow]}>
               <View style={[styles.statCard, responsiveStyles.statCard]}>
-                <View style={[styles.statIndicator, { backgroundColor: '#4CAF50' }]} />
-                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>Total Males</Text>
-                <Text style={[styles.statValue, responsiveStyles.statValue]}>{attendanceStats.totalMales}</Text>
+                <View
+                  style={[styles.statIndicator, { backgroundColor: "#4CAF50" }]}
+                />
+                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>
+                  Present Males
+                </Text>
+                <Text style={[styles.statValue, responsiveStyles.statValue]}>
+                  {attendanceStats.presentMales ?? 0}
+                </Text>
               </View>
               <View style={[styles.statCard, responsiveStyles.statCard]}>
-                <View style={[styles.statIndicator, { backgroundColor: '#4CAF50' }]} />
-                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>Total Females</Text>
-                <Text style={[styles.statValue, responsiveStyles.statValue]}>{attendanceStats.totalFemales}</Text>
+                <View
+                  style={[styles.statIndicator, { backgroundColor: "#4CAF50" }]}
+                />
+                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>
+                  Present Females
+                </Text>
+                <Text style={[styles.statValue, responsiveStyles.statValue]}>
+                  {attendanceStats.presentFemales ?? 0}
+                </Text>
               </View>
             </View>
-            
+
             <View style={[styles.statsRow, responsiveStyles.statsRow]}>
               <View style={[styles.statCard, responsiveStyles.statCard]}>
-                <View style={[styles.statIndicator, { backgroundColor: '#f44336' }]} />
-                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>Absent Males</Text>
-                <Text style={[styles.statValue, styles.absentValue, responsiveStyles.statValue]}>{attendanceStats.absentMales}</Text>
+                <View
+                  style={[styles.statIndicator, { backgroundColor: "#f44336" }]}
+                />
+                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>
+                  Absent Males
+                </Text>
+                <Text
+                  style={[
+                    styles.statValue,
+                    styles.absentValue,
+                    responsiveStyles.statValue,
+                  ]}
+                >
+                  {attendanceStats.absentMales ?? 0}
+                </Text>
               </View>
               <View style={[styles.statCard, responsiveStyles.statCard]}>
-                <View style={[styles.statIndicator, { backgroundColor: '#f44336' }]} />
-                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>Absent Females</Text>
-                <Text style={[styles.statValue, styles.absentValue, responsiveStyles.statValue]}>{attendanceStats.absentFemales}</Text>
+                <View
+                  style={[styles.statIndicator, { backgroundColor: "#f44336" }]}
+                />
+                <Text style={[styles.statLabel, responsiveStyles.statLabel]}>
+                  Absent Females
+                </Text>
+                <Text
+                  style={[
+                    styles.statValue,
+                    styles.absentValue,
+                    responsiveStyles.statValue,
+                  ]}
+                >
+                  {attendanceStats.absentFemales ?? 0}
+                </Text>
               </View>
             </View>
           </View>
         </LinearGradient>
-        
+
         {/* Attendance Type Buttons */}
-        <View style={[styles.attendanceButtonsContainer, responsiveStyles.attendanceButtonsContainer]}>
-          <Text style={[styles.attendanceButtonsTitle, responsiveStyles.attendanceButtonsTitle]}>
+        <View
+          style={[
+            styles.attendanceButtonsContainer,
+            responsiveStyles.attendanceButtonsContainer,
+          ]}
+        >
+          <Text
+            style={[
+              styles.attendanceButtonsTitle,
+              responsiveStyles.attendanceButtonsTitle,
+            ]}
+          >
             Attendance Type
           </Text>
-          <View style={[styles.attendanceButtonsGrid, responsiveStyles.attendanceButtonsGrid]}>
+          <View
+            style={[
+              styles.attendanceButtonsGrid,
+              responsiveStyles.attendanceButtonsGrid,
+            ]}
+          >
             {ATTENDANCE_TYPES.map((type) => (
               <TouchableOpacity
                 key={type.id}
-                style={[styles.attendanceButton, responsiveStyles.attendanceButton]}
+                style={[
+                  styles.attendanceButton,
+                  responsiveStyles.attendanceButton,
+                ]}
                 onPress={() => handleAttendanceTypeSelect(type.id)}
                 activeOpacity={0.8}
               >
                 <Animated.View
                   style={{
-                    transform: [{ scale: selectedAttendanceType === type.id ? buttonPressAnim : 1 }],
+                    transform: [
+                      {
+                        scale:
+                          selectedAttendanceType === type.id
+                            ? buttonPressAnim
+                            : 1,
+                      },
+                    ],
                     borderRadius: 8,
-                    overflow: 'hidden',
+                    overflow: "hidden",
                     flex: 1,
-                    shadowColor: selectedAttendanceType === type.id ? type.color : '#000',
-                    shadowOffset: { width: 0, height: selectedAttendanceType === type.id ? 2 : 1 },
-                    shadowOpacity: selectedAttendanceType === type.id ? 0.2 : 0.1,
+                    shadowColor:
+                      selectedAttendanceType === type.id ? type.color : "#000",
+                    shadowOffset: {
+                      width: 0,
+                      height: selectedAttendanceType === type.id ? 2 : 1,
+                    },
+                    shadowOpacity:
+                      selectedAttendanceType === type.id ? 0.2 : 0.1,
                     shadowRadius: selectedAttendanceType === type.id ? 4 : 2,
                     elevation: selectedAttendanceType === type.id ? 3 : 2,
                   }}
                 >
                   <LinearGradient
-                    colors={selectedAttendanceType === type.id ? 
-                      [type.color, type.color + 'DD'] : 
-                      ['#f8f9fa', '#ffffff']
+                    colors={
+                      selectedAttendanceType === type.id
+                        ? [type.color, type.color + "DD"]
+                        : ["#f8f9fa", "#ffffff"]
                     }
-                    style={[styles.attendanceButtonGradient, responsiveStyles.attendanceButtonGradient]}
+                    style={[
+                      styles.attendanceButtonGradient,
+                      responsiveStyles.attendanceButtonGradient,
+                    ]}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
                   >
-                    <Text style={[
-                      styles.attendanceButtonText, 
-                      responsiveStyles.attendanceButtonText,
-                      {
-                        color: selectedAttendanceType === type.id ? '#fff' : '#333',
-                        fontWeight: selectedAttendanceType === type.id ? 'bold' : '600'
-                      }
-                    ]}>
+                    <Text
+                      style={[
+                        styles.attendanceButtonText,
+                        responsiveStyles.attendanceButtonText,
+                        {
+                          color:
+                            selectedAttendanceType === type.id
+                              ? "#fff"
+                              : "#333",
+                          fontWeight:
+                            selectedAttendanceType === type.id ? "bold" : "600",
+                        },
+                      ]}
+                    >
                       {type.label}
                     </Text>
                     {selectedAttendanceType === type.id && (
@@ -479,42 +744,83 @@ export default function Scan() {
       </View>
 
       {/* Main Content with Scanner */}
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
         <View style={styles.scannerSection}>
-          
-          <View style={[styles.cameraContainer, responsiveStyles.cameraContainer]}>
+          <View
+            style={[styles.cameraContainer, responsiveStyles.cameraContainer]}
+          >
             <CameraView
               style={styles.camera}
               facing="back"
               onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
               barcodeScannerSettings={{
-                barcodeTypes: ['qr', 'pdf417', 'aztec', 'ean13', 'ean8', 'upc_e', 'code128', 'code39'],
+                barcodeTypes: [
+                  "qr",
+                  "pdf417",
+                  "aztec",
+                  "ean13",
+                  "ean8",
+                  "upc_e",
+                  "code128",
+                  "code39",
+                ],
               }}
             >
               <View style={styles.scannerOverlay}>
-                <View style={[styles.scannerFrame, responsiveStyles.scannerFrame]}>
+                <View
+                  style={[styles.scannerFrame, responsiveStyles.scannerFrame]}
+                >
                   {/* Animated corners */}
-                  <View style={[styles.corner, styles.topLeft, responsiveStyles.corner]} />
-                  <View style={[styles.corner, styles.topRight, responsiveStyles.corner]} />
-                  <View style={[styles.corner, styles.bottomLeft, responsiveStyles.corner]} />
-                  <View style={[styles.corner, styles.bottomRight, responsiveStyles.corner]} />
-                  
+                  <View
+                    style={[
+                      styles.corner,
+                      styles.topLeft,
+                      responsiveStyles.corner,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.corner,
+                      styles.topRight,
+                      responsiveStyles.corner,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.corner,
+                      styles.bottomLeft,
+                      responsiveStyles.corner,
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.corner,
+                      styles.bottomRight,
+                      responsiveStyles.corner,
+                    ]}
+                  />
+
                   {/* Animated scan line */}
                   <Animated.View
                     style={[
                       styles.scanLine,
                       responsiveStyles.scanLine,
                       {
-                        transform: [{
-                          translateY: scanLineAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, responsiveStyles.scannerFrame.height - 50],
-                          }),
-                        }],
+                        transform: [
+                          {
+                            translateY: scanLineAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [
+                                0,
+                                responsiveStyles.scannerFrame.height - 50,
+                              ],
+                            }),
+                          },
+                        ],
                         opacity: scanLineAnim.interpolate({
                           inputRange: [0, 0.5, 1],
                           outputRange: [0.8, 1, 0.8],
@@ -551,48 +857,73 @@ export default function Scan() {
             <View style={styles.modalHeader}>
               <View style={styles.successIconContainer}>
                 <LinearGradient
-                  colors={['#4CAF50', '#45a049']}
+                  colors={["#4CAF50", "#45a049"]}
                   style={styles.successIconGradient}
                 >
                   <Text style={styles.successIcon}>✓</Text>
                 </LinearGradient>
               </View>
-              <Text style={[styles.modalTitle, responsiveStyles.modalTitle]}>Attendance Recorded!</Text>
-              <Text style={[styles.modalSubtitle, responsiveStyles.modalSubtitle]}>Student successfully checked in</Text>
+              <Text style={[styles.modalTitle, responsiveStyles.modalTitle]}>
+                Attendance Recorded!
+              </Text>
+              <Text
+                style={[styles.modalSubtitle, responsiveStyles.modalSubtitle]}
+              >
+                Student successfully checked in
+              </Text>
             </View>
-            
+
             {/* Attendance Details */}
             <View style={styles.modalBody}>
               <LinearGradient
-                colors={[getSelectedAttendanceType().color, getSelectedAttendanceType().color + 'CC']}
+                colors={[
+                  getSelectedAttendanceType().color,
+                  getSelectedAttendanceType().color + "CC",
+                ]}
                 style={styles.attendanceCard}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                <View style={[styles.attendanceCardContent, responsiveStyles.attendanceCardContent]}>
-                  <Text style={[styles.attendanceCardLabel, responsiveStyles.attendanceCardLabel]}>
+                <View
+                  style={[
+                    styles.attendanceCardContent,
+                    responsiveStyles.attendanceCardContent,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.attendanceCardLabel,
+                      responsiveStyles.attendanceCardLabel,
+                    ]}
+                  >
                     {getSelectedAttendanceType().label}
                   </Text>
                   <Text style={styles.attendanceCardTime}>
-                    {new Date().toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit',
-                      hour12: true 
+                    {new Date().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
                     })}
                   </Text>
                 </View>
               </LinearGradient>
-              
+
               {/* Student Information */}
-              {scannedData && (
-                <View style={[styles.studentInfo, responsiveStyles.studentInfo]}>
+              {studentInfo && (
+                <View
+                  style={[styles.studentInfo, responsiveStyles.studentInfo]}
+                >
                   <View style={styles.studentInfoRow}>
-                    <Text style={styles.studentInfoLabel}>Student ID:</Text>
-                    <Text style={styles.studentInfoValue}>{scannedData.data}</Text>
+                    <Text style={styles.studentInfoLabel}>Name:</Text>
+                    <Text style={styles.studentInfoValue}>
+                      {studentInfo.name}
+                    </Text>
                   </View>
                   <View style={styles.studentInfoRow}>
-                    <Text style={styles.studentInfoLabel}>Scan Type:</Text>
-                    <Text style={styles.studentInfoValue}>{scannedData.type}</Text>
+                    <Text style={styles.studentInfoLabel}>Student ID:</Text>
+                    <Text style={styles.studentInfoValue}>
+                      {studentInfo.code}
+                    </Text>
                   </View>
                   <View style={styles.studentInfoRow}>
                     <Text style={styles.studentInfoLabel}>Date:</Text>
@@ -612,19 +943,106 @@ export default function Scan() {
                 </View>
                 <Text style={styles.autoCloseText}>Auto-closing</Text>
               </View>
-              
+
               <TouchableOpacity
                 style={styles.closeButton}
                 onPress={handleCloseModal}
                 activeOpacity={0.8}
               >
                 <LinearGradient
-                  colors={['#667eea', '#764ba2']}
+                  colors={["#667eea", "#764ba2"]}
                   style={styles.closeButtonGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
                 >
                   <Text style={styles.closeButtonText}>Continue Scanning</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        transparent={true}
+        visible={errorModalVisible}
+        animationType="none"
+        onRequestClose={handleCloseErrorModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Animated.View
+            style={[
+              styles.errorModalContent,
+              responsiveStyles.modalContent,
+              {
+                opacity: errorFadeAnim,
+                transform: [{ scale: errorScaleAnim }],
+              },
+            ]}
+          >
+            {/* Error Animation */}
+            <View style={styles.modalHeader}>
+              <View style={styles.errorIconContainer}>
+                <LinearGradient
+                  colors={["#FF6B6B", "#EE5A52"]}
+                  style={styles.errorIconGradient}
+                >
+                  <Text style={styles.errorIcon}>⚠</Text>
+                </LinearGradient>
+              </View>
+              <Text style={[styles.modalTitle, responsiveStyles.modalTitle, styles.errorTitle]}>
+                Attendance Error
+              </Text>
+              <Text
+                style={[styles.modalSubtitle, responsiveStyles.modalSubtitle, styles.errorSubtitle]}
+              >
+                {errorMessage}
+              </Text>
+            </View>
+
+            {/* Error Details */}
+            <View style={styles.modalBody}>
+              <View style={styles.errorCard}>
+                <View style={styles.errorCardContent}>
+                  <Text style={styles.errorCardLabel}>
+                    Session: {getSelectedAttendanceType().label}
+                  </Text>
+                  <Text style={styles.errorCardTime}>
+                    {new Date().toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    })}
+                  </Text>
+                  <Text style={styles.errorCardDate}>
+                    {new Date().toLocaleDateString()}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Error Modal Footer */}
+            <View style={styles.modalFooter}>
+              <View style={styles.countdownContainer}>
+                <View style={[styles.countdownCircle, styles.errorCountdownCircle]}>
+                  <Text style={[styles.countdownText, styles.errorCountdownText]}>{errorCountdown}</Text>
+                </View>
+                <Text style={styles.autoCloseText}>Auto-closing</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={handleCloseErrorModal}
+                activeOpacity={0.8}
+              >
+                <LinearGradient
+                  colors={["#FF6B6B", "#EE5A52"]}
+                  style={styles.closeButtonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                >
+                  <Text style={styles.closeButtonText}>Try Again</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -638,15 +1056,15 @@ export default function Scan() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
-  
+
   // Loading States
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
   },
   loadingText: {
     fontSize: 64,
@@ -654,16 +1072,16 @@ const styles = StyleSheet.create({
   },
   loadingSubtext: {
     fontSize: 16,
-    color: '#333',
+    color: "#333",
     opacity: 0.7,
   },
-  
+
   // Permission States
   permissionContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
     paddingHorizontal: 30,
   },
   permissionIcon: {
@@ -672,23 +1090,23 @@ const styles = StyleSheet.create({
   },
   permissionTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#333",
+    textAlign: "center",
     marginBottom: 15,
   },
   permissionMessage: {
     fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
     lineHeight: 24,
     marginBottom: 40,
   },
   permissionButton: {
     borderRadius: 30,
-    overflow: 'hidden',
+    overflow: "hidden",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
@@ -698,17 +1116,17 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
   },
   permissionButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
   },
-  
+
   // Header Section
   header: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingTop: Platform.OS === "ios" ? 50 : 30,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: "#e0e0e0",
   },
   headerGradient: {
     paddingHorizontal: 20,
@@ -716,36 +1134,36 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 20,
-    textAlign: 'center',
+    textAlign: "center",
   },
-  
+
   // Statistics Section
   statsContainer: {
-    width: '100%',
+    width: "100%",
     marginBottom: 20,
   },
   statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 12,
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     padding: 16,
     marginHorizontal: 4,
     borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 4,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: "#f0f0f0",
   },
   statIndicator: {
     width: 8,
@@ -755,37 +1173,37 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
     marginBottom: 6,
-    textAlign: 'center',
-    fontWeight: '500',
+    textAlign: "center",
+    fontWeight: "500",
   },
   statValue: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#4CAF50',
+    fontWeight: "bold",
+    color: "#4CAF50",
   },
   absentValue: {
-    color: '#f44336',
+    color: "#f44336",
   },
-  
+
   // Attendance Buttons Section
   attendanceButtonsContainer: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: "#f8f9fa",
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: "#e0e0e0",
   },
   attendanceButtonsTitle: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   attendanceButtonsGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 6,
   },
   attendanceButton: {
@@ -795,71 +1213,71 @@ const styles = StyleSheet.create({
   attendanceButtonGradient: {
     paddingHorizontal: 8,
     paddingVertical: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     minHeight: 32,
-    position: 'relative',
+    position: "relative",
   },
   attendanceButtonText: {
     fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: "600",
+    textAlign: "center",
     lineHeight: 12,
   },
   selectedIndicator: {
-    position: 'absolute',
+    position: "absolute",
     top: 2,
     right: 2,
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(255,255,255,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   selectedIcon: {
     fontSize: 8,
-    color: '#4CAF50',
-    fontWeight: 'bold',
+    color: "#4CAF50",
+    fontWeight: "bold",
   },
-  
+
   // Main Content
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
     paddingVertical: 25,
   },
-  
+
   // Scanner Section
   scannerSection: {
-    alignItems: 'center',
+    alignItems: "center",
     flex: 1,
     minHeight: screenHeight * 0.4,
   },
   scannerHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 10,
   },
   scannerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 8,
   },
   scannerSubtitle: {
     fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
     lineHeight: 22,
   },
   cameraContainer: {
     width: 300,
     height: 300,
     borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#000',
+    overflow: "hidden",
+    backgroundColor: "#000",
     marginBottom: 24,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
     shadowRadius: 16,
@@ -870,22 +1288,22 @@ const styles = StyleSheet.create({
   },
   scannerOverlay: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.3)",
   },
-  
+
   // Scanner Frame
   scannerFrame: {
     width: 200,
     height: 200,
-    position: 'relative',
+    position: "relative",
   },
   corner: {
-    position: 'absolute',
+    position: "absolute",
     width: 30,
     height: 30,
-    borderColor: '#00FF88',
+    borderColor: "#00FF88",
     borderWidth: 4,
     borderRadius: 4,
   },
@@ -914,158 +1332,158 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
   },
   scanLine: {
-    position: 'absolute',
+    position: "absolute",
     left: 15,
     right: 15,
     height: 3,
-    backgroundColor: '#00FF88',
+    backgroundColor: "#00FF88",
     borderRadius: 2,
-    shadowColor: '#00FF88',
+    shadowColor: "#00FF88",
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 8,
   },
-  
+
   // Success Modal
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 20,
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 25,
     padding: 25,
-    width: '100%',
+    width: "100%",
     maxWidth: 380,
     elevation: 25,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 15 },
     shadowOpacity: 0.3,
     shadowRadius: 30,
   },
   modalHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 25,
   },
   successIconContainer: {
     marginBottom: 20,
     borderRadius: 50,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   successIconGradient: {
     width: 80,
     height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   successIcon: {
     fontSize: 40,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: "#fff",
+    fontWeight: "bold",
   },
   modalTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
     marginBottom: 8,
-    textAlign: 'center',
+    textAlign: "center",
   },
   modalSubtitle: {
     fontSize: 16,
-    color: '#666',
-    textAlign: 'center',
+    color: "#666",
+    textAlign: "center",
   },
   modalBody: {
     marginBottom: 25,
   },
   attendanceCard: {
     borderRadius: 20,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginBottom: 20,
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
   attendanceCardContent: {
     padding: 20,
-    alignItems: 'center',
+    alignItems: "center",
   },
   attendanceCardLabel: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: "bold",
+    color: "#fff",
     marginBottom: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   attendanceCardTime: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'center',
+    color: "rgba(255,255,255,0.9)",
+    textAlign: "center",
   },
   studentInfo: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: "#f8f9fa",
     borderRadius: 15,
     padding: 20,
   },
   studentInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: "#e9ecef",
   },
   studentInfoLabel: {
     fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    color: "#666",
+    fontWeight: "500",
   },
   studentInfoValue: {
     fontSize: 14,
-    color: '#333',
-    fontWeight: 'bold',
-    textAlign: 'right',
+    color: "#333",
+    fontWeight: "bold",
+    textAlign: "right",
     flex: 1,
     marginLeft: 10,
   },
   modalFooter: {
-    flexDirection: isTablet ? 'row' : 'column',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: isTablet ? "row" : "column",
+    justifyContent: "space-between",
+    alignItems: "center",
     gap: isTablet ? 0 : 15,
   },
   countdownContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     order: isTablet ? 1 : 2,
   },
   countdownCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 5,
   },
   countdownText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#666',
+    fontWeight: "bold",
+    color: "#666",
   },
   autoCloseText: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
   },
   closeButton: {
     borderRadius: 25,
-    overflow: 'hidden',
+    overflow: "hidden",
     elevation: 3,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -1076,9 +1494,85 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   closeButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: 'bold',
-    textAlign: 'center',
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+
+  // Error Modal Styles
+  errorModalContent: {
+    backgroundColor: "#fff",
+    borderRadius: 25,
+    padding: 25,
+    width: "100%",
+    maxWidth: 380,
+    elevation: 25,
+    shadowColor: "#FF6B6B",
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+    borderWidth: 2,
+    borderColor: "rgba(255, 107, 107, 0.2)",
+  },
+  errorIconContainer: {
+    marginBottom: 20,
+    borderRadius: 50,
+    overflow: "hidden",
+  },
+  errorIconGradient: {
+    width: 80,
+    height: 80,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  errorIcon: {
+    fontSize: 40,
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  errorTitle: {
+    color: "#FF6B6B",
+  },
+  errorSubtitle: {
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  errorCard: {
+    backgroundColor: "#FFE8E8",
+    borderRadius: 15,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  errorCardContent: {
+    alignItems: "center",
+  },
+  errorCardLabel: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#FF6B6B",
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  errorCardTime: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
+    marginBottom: 2,
+  },
+  errorCardDate: {
+    fontSize: 12,
+    color: "#999",
+    textAlign: "center",
+  },
+  errorCountdownCircle: {
+    backgroundColor: "#FFE8E8",
+    borderWidth: 2,
+    borderColor: "rgba(255, 107, 107, 0.3)",
+  },
+  errorCountdownText: {
+    color: "#FF6B6B",
   },
 });
