@@ -485,10 +485,6 @@ export default function Scan() {
         bounces={false}
       >
         <View style={styles.scannerSection}>
-          <View style={styles.scannerHeader}>
-            {/* <Text style={[styles.scannerTitle, responsiveStyles.scannerTitle]}>📱 Scan QR Code</Text> */}
-            <Text style={[styles.scannerSubtitle, responsiveStyles.scannerSubtitle]}>Position the QR code within the frame</Text>
-          </View>
           
           <View style={[styles.cameraContainer, responsiveStyles.cameraContainer]}>
             <CameraView
@@ -831,7 +827,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingVertical: 25,
   },
   
   // Scanner Section
@@ -842,7 +838,7 @@ const styles = StyleSheet.create({
   },
   scannerHeader: {
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 10,
   },
   scannerTitle: {
     fontSize: 24,

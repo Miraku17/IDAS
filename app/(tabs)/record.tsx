@@ -425,10 +425,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    
   },
   totalSummaryGradient: {
     padding: 20,
-    borderWidth: 2,
+    borderWidth: 0,
     borderColor: '#4CAF50',
   },
   totalSummaryContent: {
@@ -568,6 +569,6 @@ const styles = StyleSheet.create({
   
   // Bottom Spacing
   bottomSpacing: {
-    height: 30,
+    height: 80,
   },
 });
