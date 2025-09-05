@@ -101,7 +101,7 @@ export function useStudentsDb() {
     if (!db || !dbReady) return null;
     const student = await findStudentByCode(qrCode);
     if (student) {
-      console.log("🎉 Student found:", student.name);
+      console.log("🎉 Check Scanned Student found:", student.name);
       return student;
     } else {
       console.log("⚠️ No student found for QR:", qrCode);
@@ -116,6 +116,6 @@ export function useStudentsDb() {
     clearStudents, 
     checkScannedStudent,
     getTotalStudents,
-    dbReady // ✅ expose ready flag
+    dbReady 
   };
 }

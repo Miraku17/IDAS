@@ -12,14 +12,14 @@ import {
 import { ThemedView } from "@/components/ThemedView";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calendar } from "react-native-calendars";
-import { useAttendanceDb } from "@/hooks/useAttendanceDb";
+import { useAttendanceStore } from "../../store/attendanceStore";
 
 const { width: screenWidth } = Dimensions.get("window");
 const isTablet = screenWidth >= 600;
 
 const attendanceTypeColors = {
   Morning: "#4CAF50",
-  Lunch: "#FF9800",
+  "Lunch Dismissal": "#FF9800",
   "After Lunch": "#2196F3",
   Dismissal: "#9C27B0",
 };
@@ -35,124 +35,42 @@ const getSessionLabelAndColor = (session: string) => {
     case "dismissal":
       return { label: "Dismissal", color: "#9C27B0" };
     default:
-      return { label: session, color: "#999" }; // fallback
+      return { label: session, color: "#999" };
   }
 };
 
 export default function RecordsScreen() {
-  const { 
-    hasAttendanceForDate, 
-    getAttendanceByDate, 
-    getSessionCountsByDate,
-    getAllDatesWithAttendance // Add this new function
-  } = useAttendanceDb();
+  const {
+    recentScans,
+    sessionCounts,
+    fetchAttendanceByDate,
+    fetchSessionCounts,
+    loading,
+  } = useAttendanceStore();
 
   const [selectedDate, setSelectedDate] = useState(
     new Date().toLocaleDateString("en-CA")
   );
   const [markedDates, setMarkedDates] = useState({});
-  const [records, setRecords] = useState([]);
-  const [summary, setSummary] = useState({
-    Morning: 0,
-    Lunch: 0,
-    "After Lunch": 0,
-    Dismissal: 0,
-    Total: 0,
-  });
-  const [loading, setLoading] = useState(true);
 
-  // Load all dates with attendance data and mark them on calendar
-  const loadAllMarkedDates = async () => {
-    try {
-      const allDatesWithAttendance = await getAllDatesWithAttendance();
-      
-      const marked = {};
-      
-      // Mark all dates that have attendance data
-      allDatesWithAttendance.forEach(date => {
-        marked[date] = { 
-          marked: true, 
-          dotColor: '#4CAF50'
-        };
-      });
-      
-      // Also mark the currently selected date
-      const hasDataForSelected = allDatesWithAttendance.includes(selectedDate);
-      marked[selectedDate] = {
-        ...marked[selectedDate],
-        selected: true,
-        selectedColor: hasDataForSelected ? '#4CAF50' : '#ccc'
-      };
-      
-      setMarkedDates(marked);
-    } catch (error) {
-      console.error('Error loading marked dates:', error);
-    }
-  };
-
-  const loadAttendance = async (date: string) => {
-    setLoading(true);
-
-    const details = await getAttendanceByDate(date);
-    setRecords(details);
-
-    console.log("Load Attendance:", details);
-
-    const counts = await getSessionCountsByDate(date);
-    setSummary({
-      ...counts,
-      Total: details.length,
-    });
-
-    console.log("Has Data Date:", details.length > 0);
-    setLoading(false);
-  };
-
-  // Update marked dates when selected date changes
-  const updateMarkedDatesForSelection = async (date: string) => {
-    const allDatesWithAttendance = await getAllDatesWithAttendance();
-    
-    const marked = {};
-    
-    // Mark all dates that have attendance data
-    allDatesWithAttendance.forEach(attendanceDate => {
-      marked[attendanceDate] = { 
-        marked: true, 
-        dotColor: '#4CAF50'
-      };
-    });
-    
-    // Highlight the selected date
-    const hasDataForSelected = allDatesWithAttendance.includes(date);
-    marked[date] = {
-      ...marked[date],
-      selected: true,
-      selectedColor: hasDataForSelected ? '#4CAF50' : '#ccc'
-    };
-    
-    setMarkedDates(marked);
-  };
-
-  // Initial load
+  // Update attendance whenever date changes
   useEffect(() => {
-    const initializeData = async () => {
-      await loadAllMarkedDates();
-      await loadAttendance(selectedDate);
-    };
-    
-    initializeData();
-  }, []);
+    fetchAttendanceByDate(selectedDate);
+    fetchSessionCounts(selectedDate);
 
-  const onDayPress = async (day) => {
-    console.log("This is pressed");
-    const date = day.dateString;
-    setSelectedDate(date);
-    
-    // Update marked dates to show new selection
-    await updateMarkedDatesForSelection(date);
-    
-    // Load attendance for selected date
-    await loadAttendance(date);
+    // Mark selected date in calendar
+    setMarkedDates({
+      [selectedDate]: {
+        selected: true,
+        selectedColor: "#4CAF50",
+        marked: true,
+        dotColor: "#4CAF50",
+      },
+    });
+  }, [selectedDate]);
+
+  const onDayPress = (day: { dateString: string }) => {
+    setSelectedDate(day.dateString);
   };
 
   const formatDate = (dateString: string) => {
@@ -169,12 +87,10 @@ export default function RecordsScreen() {
     <ThemedView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* Header with Gradient Background */}
+      {/* Header */}
       <LinearGradient
         colors={["#ffffff", "#f0f8f0", "#e8f5e8"]}
         style={styles.headerGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
       >
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Attendance Records</Text>
@@ -184,52 +100,40 @@ export default function RecordsScreen() {
         </View>
       </LinearGradient>
 
-      <ScrollView
-        style={styles.scrollContainer}
-        showsVerticalScrollIndicator={true}
-        bounces={false}
-      >
-        {/* Calendar Section */}
+      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator>
+        {/* Calendar */}
         <View style={styles.calendarContainer}>
-          <LinearGradient
-            colors={["#ffffff", "#f8fdf8"]}
-            style={styles.calendarGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Calendar
-              current={selectedDate}
-              onDayPress={onDayPress}
-              markedDates={markedDates}
-              theme={{
-                backgroundColor: "transparent",
-                calendarBackground: "transparent",
-                textSectionTitleColor: "#4CAF50",
-                selectedDayBackgroundColor: "#4CAF50",
-                selectedDayTextColor: "#ffffff",
-                todayTextColor: "#4CAF50",
-                dayTextColor: "#2d4150",
-                textDisabledColor: "#d9e1e8",
-                dotColor: "#4CAF50",
-                selectedDotColor: "#ffffff",
-                arrowColor: "#4CAF50",
-                monthTextColor: "#2d4150",
-                indicatorColor: "#4CAF50",
-                textDayFontFamily: Platform.OS === "ios" ? "System" : "Roboto",
-                textMonthFontFamily:
-                  Platform.OS === "ios" ? "System" : "Roboto",
-                textDayHeaderFontFamily:
-                  Platform.OS === "ios" ? "System" : "Roboto",
-                textDayFontWeight: "500",
-                textMonthFontWeight: "bold",
-                textDayHeaderFontWeight: "600",
-                textDayFontSize: 16,
-                textMonthFontSize: 18,
-                textDayHeaderFontSize: 14,
-              }}
-              style={styles.calendar}
-            />
-          </LinearGradient>
+          <Calendar
+            current={selectedDate}
+            onDayPress={onDayPress}
+            markedDates={markedDates}
+            theme={{
+              backgroundColor: "transparent",
+              calendarBackground: "transparent",
+              textSectionTitleColor: "#4CAF50",
+              selectedDayBackgroundColor: "#4CAF50",
+              selectedDayTextColor: "#ffffff",
+              todayTextColor: "#4CAF50",
+              dayTextColor: "#2d4150",
+              textDisabledColor: "#d9e1e8",
+              dotColor: "#4CAF50",
+              selectedDotColor: "#ffffff",
+              arrowColor: "#4CAF50",
+              monthTextColor: "#2d4150",
+              indicatorColor: "#4CAF50",
+              textDayFontFamily: Platform.OS === "ios" ? "System" : "Roboto",
+              textMonthFontFamily: Platform.OS === "ios" ? "System" : "Roboto",
+              textDayHeaderFontFamily:
+                Platform.OS === "ios" ? "System" : "Roboto",
+              textDayFontWeight: "500",
+              textMonthFontWeight: "bold",
+              textDayHeaderFontWeight: "600",
+              textDayFontSize: 16,
+              textMonthFontSize: 18,
+              textDayHeaderFontSize: 14,
+            }}
+            style={styles.calendar}
+          />
         </View>
 
         {/* Selected Date Info */}
@@ -237,15 +141,13 @@ export default function RecordsScreen() {
           <LinearGradient
             colors={["#4CAF50", "#45a049"]}
             style={styles.selectedDateGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
           >
             <Text style={styles.selectedDateText}>
               {formatDate(selectedDate)}
             </Text>
             <Text style={styles.selectedDateSubtext}>
-              {records.length} attendance record
-              {records.length !== 1 ? "s" : ""}
+              {recentScans.length} attendance record
+              {recentScans.length !== 1 ? "s" : ""}
             </Text>
           </LinearGradient>
         </View>
@@ -259,7 +161,7 @@ export default function RecordsScreen() {
           </View>
         ) : (
           <>
-            {/* Attendance Summary Cards */}
+            {/* Attendance Summary */}
             <View style={styles.summaryContainer}>
               <Text style={styles.sectionTitle}>Daily Summary</Text>
               <View style={styles.summaryGrid}>
@@ -268,13 +170,11 @@ export default function RecordsScreen() {
                     <LinearGradient
                       colors={[color, color + "CC"]}
                       style={styles.summaryCardGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
                     >
                       <View style={styles.summaryCardContent}>
                         <Text style={styles.summaryCardLabel}>{type}</Text>
                         <Text style={styles.summaryCardValue}>
-                          {summary[type]}
+                          {sessionCounts[type] || 0}
                         </Text>
                       </View>
                     </LinearGradient>
@@ -287,32 +187,28 @@ export default function RecordsScreen() {
                 <LinearGradient
                   colors={["#f8f9fa", "#ffffff"]}
                   style={styles.totalSummaryGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
                 >
                   <View style={styles.totalSummaryContent}>
                     <Text style={styles.totalSummaryLabel}>
                       Total Attendance
                     </Text>
                     <Text style={styles.totalSummaryValue}>
-                      {summary.Total}
+                      {recentScans.length}
                     </Text>
                   </View>
                 </LinearGradient>
               </View>
             </View>
 
-            {/* Attendance Records List */}
+            {/* Attendance Records */}
             <View style={styles.recordsContainer}>
               <Text style={styles.sectionTitle}>Attendance Details</Text>
 
-              {records.length === 0 ? (
+              {recentScans.length === 0 ? (
                 <View style={styles.noRecordsContainer}>
                   <LinearGradient
                     colors={["#f8f9fa", "#ffffff"]}
                     style={styles.noRecordsGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
                   >
                     <Text style={styles.noRecordsIcon}>📅</Text>
                     <Text style={styles.noRecordsText}>
@@ -325,18 +221,15 @@ export default function RecordsScreen() {
                 </View>
               ) : (
                 <View style={styles.recordsList}>
-                  {records.map((record) => {
+                  {recentScans.map((record) => {
                     const { label, color } = getSessionLabelAndColor(
                       record.session
                     );
-
                     return (
                       <View key={record.id} style={styles.recordCard}>
                         <LinearGradient
                           colors={["#ffffff", "#fafafa"]}
                           style={styles.recordCardGradient}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
                         >
                           <View style={styles.recordCardContent}>
                             <View style={styles.recordHeader}>
@@ -387,13 +280,13 @@ export default function RecordsScreen() {
             </View>
           </>
         )}
-
-        {/* Bottom Spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
     </ThemedView>
   );
 }
+
+
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },

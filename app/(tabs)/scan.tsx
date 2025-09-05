@@ -20,6 +20,8 @@ import { useStudentsDb } from "../../hooks/useStudentsDb";
 import { useAttendanceDb } from "../../hooks/useAttendanceDb";
 import { useFocusEffect } from "@react-navigation/native";
 
+import { useAttendanceStore } from "../../store/attendanceStore"; 
+
 const ATTENDANCE_TYPES = [
   { id: "morning", label: "Morning", color: "#4CAF50" },
   { id: "lunch_dismissal", label: "Lunch", color: "#FF9800" },
@@ -97,19 +99,7 @@ export default function Scan() {
   const { checkScannedStudent } = useStudentsDb();
   const [studentInfo, setStudentInfo] = useState(null);
 
-  const { markAttendance, getTodayStats } = useAttendanceDb();
-
-  // Mock attendance data
-  const [attendanceStats, setAttendanceStats] = useState({
-    presentMales: 0,
-    presentFemales: 0,
-    absentMales: 0,
-    absentFemales: 0,
-    totalMales: 0,
-    totalFemales: 0,
-    totalPresent: 0,
-    totalAbsent: 0,
-  });
+  const { markAttendance, fetchTodayStats, todayStats } = useAttendanceStore();
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -138,31 +128,29 @@ export default function Scan() {
       let isActive = true;
 
       const fetchStats = async () => {
-        const stats = await getTodayStats(selectedAttendanceType);
-        if (isActive) setAttendanceStats(stats);
+        await fetchTodayStats(selectedAttendanceType);
       };
 
       fetchStats();
 
       return () => {
-        isActive = false; // cleanup
+        isActive = false;
       };
     }, [selectedAttendanceType])
   );
-
 
   useFocusEffect(
     React.useCallback(() => {
       // Screen is focused - enable scanning
       setIsScreenFocused(true);
       setScanningEnabled(true);
-  
+
       return () => {
         // Screen is losing focus - disable scanning
         setIsScreenFocused(false);
         setScanningEnabled(false);
         setScanned(false);
-  
+
         // Clear any active timeouts
         if (scanDelayTimeoutRef.current) {
           clearTimeout(scanDelayTimeoutRef.current);
@@ -431,53 +419,48 @@ export default function Scan() {
     );
   }
 
+
   const handleBarcodeScanned = async ({ type, data }) => {
-    // Prevent scanning if already scanned, modals are open, or scanning is disabled
     if (scanned || modalVisible || errorModalVisible || !scanningEnabled) {
       return;
     }
-
+  
     setScanned(true);
     setScanningEnabled(false);
-
+  
     try {
-      // check if student exists in DB
       const student = await checkScannedStudent(data);
-
+      console.log("Scanned Student Info", student);
+  
       if (student) {
         setStudentInfo(student);
-
-        // ✅ Try to save attendance in DB
-        await markAttendance(student.id, selectedAttendanceType);
-
-        // If successful, fetch updated stats and show success modal
-        const stats = await getTodayStats(selectedAttendanceType);
-        setAttendanceStats(stats);
-        setModalVisible(true);
+  
+        // ✅ Use the returned result
+        const result = await markAttendance(student.id, selectedAttendanceType);
+  
+        if (result.success) {
+          await fetchTodayStats(selectedAttendanceType);
+          setModalVisible(true);
+        } else {
+          setErrorMessage(result.message);
+          setErrorModalVisible(true);
+          enableScanningAfterDelay(3000);
+        }
       } else {
         setErrorMessage("Student not found in database");
         setErrorModalVisible(true);
-        // Re-enable scanning after error with delay
         enableScanningAfterDelay(3000);
       }
     } catch (error) {
       console.error("Attendance error:", error);
-
-      // Handle different types of errors
-      if (error.message.includes("already recorded")) {
-        setErrorMessage(
-          "Attendance already recorded for this student in this session today"
-        );
-      } else {
-        setErrorMessage("Failed to record attendance. Please try again.");
-      }
-
+      setErrorMessage("Failed to record attendance. Please try again.");
       setErrorModalVisible(true);
-      // Re-enable scanning after error with delay
       enableScanningAfterDelay(3000);
     }
   };
 
+  
+  
   const handleCloseModal = () => {
     setModalVisible(false);
     setStudentInfo(null); // reset
@@ -703,7 +686,7 @@ export default function Scan() {
                   Present Males
                 </Text>
                 <Text style={[styles.statValue, responsiveStyles.statValue]}>
-                  {attendanceStats.presentMales ?? 0}
+                  {todayStats?.presentMales ?? 0}
                 </Text>
               </View>
               <View style={[styles.statCard, responsiveStyles.statCard]}>
@@ -714,7 +697,7 @@ export default function Scan() {
                   Present Females
                 </Text>
                 <Text style={[styles.statValue, responsiveStyles.statValue]}>
-                  {attendanceStats.presentFemales ?? 0}
+                  {todayStats?.presentFemales ?? 0}
                 </Text>
               </View>
             </View>
@@ -734,7 +717,7 @@ export default function Scan() {
                     responsiveStyles.statValue,
                   ]}
                 >
-                  {attendanceStats.absentMales ?? 0}
+                  {todayStats?.absentMales ?? 0}
                 </Text>
               </View>
               <View style={[styles.statCard, responsiveStyles.statCard]}>
@@ -751,7 +734,7 @@ export default function Scan() {
                     responsiveStyles.statValue,
                   ]}
                 >
-                  {attendanceStats.absentFemales ?? 0}
+                  {todayStats?.absentFemales ?? 0}
                 </Text>
               </View>
             </View>
@@ -874,7 +857,7 @@ export default function Scan() {
                 !scanned &&
                 !modalVisible &&
                 !errorModalVisible &&
-                isScreenFocused  
+                isScreenFocused
                   ? handleBarcodeScanned
                   : undefined
               }

@@ -10,67 +10,33 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { useAttendanceDb } from "../../hooks/useAttendanceDb";
-import { useStudentsDb } from "../../hooks/useStudentsDb.js";
-
 import { useRouter } from "expo-router";
+
+// ✅ import Zustand store
+import { useAttendanceStore } from "../../store/attendanceStore";
 
 export default function HomeScreen() {
   const [selectedSession, setSelectedSession] = useState("Morning");
   const [currentDateTime, setCurrentDateTime] = useState(new Date());
-  const [recentScans, setRecentScans] = useState<Attendance[]>([]);
-  const [todayStats, setTodayStats] = useState({
-    totalMales: 0,
-    totalFemales: 0,
-    presentMales: 0,
-    presentFemales: 0,
-    absentMales: 0,
-    absentFemales: 0,
-    totalPresent: 0,
-    totalAbsent: 0,
-  });
-  const { getRecentScans, getTodayStats } = useAttendanceDb();
+
   const router = useRouter();
+
+  // ✅ grab store state + actions
+  const { recentScans, todayStats, fetchRecentScans, fetchTodayStats } =
+    useAttendanceStore();
 
   // Fetch data when screen is focused
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
-
-      const fetchRecentScans = async () => {
-        try {
-          const scans = await getRecentScans();
-          if (isActive) setRecentScans(scans);
-        } catch (err) {
-          console.error("Failed to fetch recent scans:", err);
-        }
-      };
-
       fetchRecentScans();
-
-      return () => {
-        isActive = false; // cleanup
-      };
-    }, [])
+    }, [fetchRecentScans])
   );
 
-  // Fetch stats when session changes or component mounts
+  // Fetch stats when session changes
   useEffect(() => {
-    const fetchTodayStats = async () => {
-      try {
-        // Convert session name to lowercase to match database format
-        const sessionForDb = selectedSession.toLowerCase();
-        console.log("Fetching stats for session:", selectedSession, "->", sessionForDb);
-        const stats = await getTodayStats(sessionForDb);
-        console.log("Stats received:", stats);
-        setTodayStats(stats);
-      } catch (err) {
-        console.error("Failed to fetch today's stats:", err);
-      }
-    };
-
-    fetchTodayStats();
-  }, [selectedSession]); // Only selectedSession as dependency
+    const sessionForDb = selectedSession.toLowerCase().replace(" ", "_"); // convert to DB format
+    fetchTodayStats(sessionForDb);
+  }, [selectedSession]);
 
   // Update time every second
   useEffect(() => {
@@ -106,9 +72,9 @@ export default function HomeScreen() {
   // Calculate stats for display
   const stats = {
     total: 32, // Constant as requested
-    present: todayStats.totalPresent,
-    male: todayStats.presentMales,
-    female: todayStats.presentFemales,
+    present: todayStats?.totalPresent ?? 0,
+    male: todayStats?.presentMales ?? 0,
+    female: todayStats?.presentFemales ?? 0,
   };
 
   return (
@@ -179,7 +145,7 @@ export default function HomeScreen() {
               <View style={styles.scanButtonGradient} />
               <TouchableOpacity
                 style={styles.scanButton}
-                onPress={() => router.push("/scan")} 
+                onPress={() => router.push("/scan")}
               >
                 <View style={styles.scanButtonContent}>
                   <Ionicons name="qr-code-outline" size={48} color="#FFFFFF" />
