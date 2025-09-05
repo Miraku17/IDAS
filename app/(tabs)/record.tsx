@@ -8,6 +8,8 @@ import {
   Platform,
   Dimensions,
   ActivityIndicator,
+  TouchableOpacity,
+  Alert,
 } from "react-native";
 import { ThemedView } from "@/components/ThemedView";
 import { LinearGradient } from "expo-linear-gradient";
@@ -45,6 +47,7 @@ export default function RecordsScreen() {
     sessionCounts,
     fetchAttendanceByDate,
     fetchSessionCounts,
+    exportAttendanceByDate,
     loading,
   } = useAttendanceStore();
 
@@ -81,6 +84,32 @@ export default function RecordsScreen() {
       month: "long",
       day: "numeric",
     });
+  };
+
+  const handleExportCSV = async () => {
+    try {
+      if (recentScans.length === 0) {
+        Alert.alert("No Data", "No attendance records found for this date");
+        return;
+      }
+      await exportAttendanceByDate(selectedDate, "csv");
+      Alert.alert("Success", "CSV file exported successfully!");
+    } catch (error: any) {
+      Alert.alert("Export Failed", error.message);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      if (recentScans.length === 0) {
+        Alert.alert("No Data", "No attendance records found for this date");
+        return;
+      }
+      await exportAttendanceByDate(selectedDate, "pdf");
+      Alert.alert("Success", "PDF file exported successfully!");
+    } catch (error: any) {
+      Alert.alert("Export Failed", error.message);
+    }
   };
 
   return (
@@ -182,21 +211,23 @@ export default function RecordsScreen() {
                 ))}
               </View>
 
-              {/* Total Summary */}
-              <View style={styles.totalSummaryCard}>
-                <LinearGradient
-                  colors={["#f8f9fa", "#ffffff"]}
-                  style={styles.totalSummaryGradient}
+              {/* Export Section */}
+              <View style={styles.exportSection}>
+                <TouchableOpacity
+                  style={styles.exportButton}
+                  onPress={handleExportPDF}
+                  activeOpacity={0.8}
                 >
-                  <View style={styles.totalSummaryContent}>
-                    <Text style={styles.totalSummaryLabel}>
-                      Total Attendance
+                  <LinearGradient
+                    colors={["#1565C0", "#0D47A1"]}
+                    style={styles.exportButtonGradient}
+                  >
+                    <Text style={styles.exportButtonIcon}>📄</Text>
+                    <Text style={styles.exportButtonText}>
+                      Export PDF Report
                     </Text>
-                    <Text style={styles.totalSummaryValue}>
-                      {recentScans.length}
-                    </Text>
-                  </View>
-                </LinearGradient>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -286,8 +317,6 @@ export default function RecordsScreen() {
   );
 }
 
-
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
   headerGradient: {
@@ -321,7 +350,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
   },
-  calendarGradient: { padding: 15 },
   calendar: { borderRadius: 15 },
   selectedDateContainer: {
     marginHorizontal: 20,
@@ -386,34 +414,82 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#ffffff",
   },
-  totalSummaryCard: {
+  exportSection: {
+    marginBottom: 4,
+    marginHorizontal: 10,
+  },
+  exportButton: {
     borderRadius: 15,
-    overflow: "hidden",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    overflow: 'hidden',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
   },
-  totalSummaryGradient: {
-    padding: 20,
-    borderWidth: 0,
-    borderColor: "#4CAF50",
+  exportButtonGradient: {
+    paddingVertical: 24,
+    paddingHorizontal: 25,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  totalSummaryContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  exportButtonIcon: {
+    fontSize: 24,
+    marginRight: 12,
   },
-  totalSummaryLabel: {
+  exportButtonText: {
     fontSize: isTablet ? 18 : 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    letterSpacing: 0.5,
+  },
+  exportSectionTitle: {
+    fontSize: isTablet ? 22 : 20,
     fontWeight: "bold",
     color: "#2d4150",
+    marginBottom: 20,
+    paddingHorizontal: 5,
+    textAlign: "center",
   },
-  totalSummaryValue: {
+  modernFloatingContainer: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "center",
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+  },
+  modernBubble: {
+    width: isTablet ? 120 : 100,
+    height: isTablet ? 120 : 100,
+    borderRadius: isTablet ? 60 : 50,
+    elevation: 12,
+    shadowColor: "#4CAF50",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15,
+  },
+  modernBubbleGradient: {
+    width: "100%",
+    height: "100%",
+    borderRadius: isTablet ? 60 : 50,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modernBubbleContent: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modernBubbleIcon: {
     fontSize: isTablet ? 32 : 28,
-    fontWeight: "bold",
-    color: "#4CAF50",
+    marginBottom: 8,
+  },
+  modernBubbleText: {
+    fontSize: isTablet ? 13 : 11,
+    fontWeight: "600",
+    color: "#ffffff",
+    textAlign: "center",
+    letterSpacing: 0.3,
   },
   recordsContainer: { marginHorizontal: 20, marginBottom: 20 },
   noRecordsContainer: {
@@ -463,11 +539,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#2d4150",
     marginBottom: 2,
-  },
-  studentId: {
-    fontSize: isTablet ? 14 : 12,
-    color: "#666",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
   },
   recordTypeBadge: {
     paddingHorizontal: 12,
