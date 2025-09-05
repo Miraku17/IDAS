@@ -43,8 +43,8 @@ export function useAttendanceDb() {
     })();
   }, []);
 
-  // ✅ Mark attendance with duplicate check
-  const markAttendance = async (studentId: number, session: string) => {
+// ✅ Mark attendance with duplicate check (snake_case sessions in DB)
+const markAttendance = async (studentId: number, session: string) => {
     try {
       const now = new Date();
       const date = now.toLocaleDateString("en-CA"); // YYYY-MM-DD
@@ -53,38 +53,39 @@ export function useAttendanceDb() {
         minute: "2-digit",
         hour12: true,
       });
-
-      // 🔑 Normalize session
+  
+      // 🔑 Normalize session into snake_case for DB storage
       const sessionMap: Record<string, string> = {
-        morning: "Morning",
-        lunch: "Lunch",
-        lunch_dismissal: "Lunch",
-        after_lunch: "After Lunch",
-        dismissal: "Dismissal",
+        morning: "morning",
+        lunch: "lunch",
+        lunch_dismissal: "lunch_dismissal", // if you want to keep this distinct
+        after_lunch: "after_lunch",
+        dismissal: "dismissal",
       };
-
-      const normalizedSession = sessionMap[session.toLowerCase()] || session; // fallback if not mapped
-
+  
+      const normalizedSession =
+        sessionMap[session.toLowerCase().replace(/\s+/g, "_")] || session;
+  
       // Check if attendance already exists for this student, session, and date
       const existingAttendance = await db.getFirstAsync<{ id: number }>(
         `SELECT id FROM attendance 
          WHERE student_id = ? AND session = ? AND date = ?`,
         [studentId, normalizedSession, date]
       );
-
+  
       if (existingAttendance) {
         throw new Error(
           `Attendance already recorded for this student in ${normalizedSession} today`
         );
       }
-
+  
       // If no existing record, insert new attendance
       await db.runAsync(
         `INSERT INTO attendance (student_id, session, date, time, status)
          VALUES (?, ?, ?, ?, 'present')`,
         [studentId, normalizedSession, date, time]
       );
-
+  
       console.log(
         `✅ Attendance marked for student ${studentId} in ${normalizedSession}`
       );
@@ -93,6 +94,8 @@ export function useAttendanceDb() {
       throw error; // Re-throw to allow calling code to handle the error
     }
   };
+
+  
 
   // ✅ Get recent scans (latest 10)
   const getRecentScans = async (): Promise<Attendance[]> => {
@@ -113,34 +116,51 @@ export function useAttendanceDb() {
     }
   };
 
-  // ✅ Get stats for today (per session)
   const getTodayStats = async (session: string): Promise<TodayStats> => {
     try {
       const today = new Date().toLocaleDateString("en-CA");
-
-      // All students with code
+      console.log("📅 Today:", today, "| 🕒 Session:", JSON.stringify(session));
+  
+      // 🔎 Fetch all students
       const students = await db.getAllAsync<{ id: number; code: string }>(
         `SELECT id, code FROM students`
       );
-
-      // Present for session + date
+      console.log("👨‍🎓 Students fetched:", students.length);
+  
+      // 🔎 Log attendance table (limit for safety)
+      const allAttendance = await db.getAllAsync<any>(
+        `SELECT * FROM attendance ORDER BY date DESC LIMIT 50`
+      );
+      console.log("🗂️ Attendance table (latest 50 rows):", allAttendance);
+  
+      // 🔎 Fetch present students for today + session (case-insensitive, trimmed)
       const present = await db.getAllAsync<{ student_id: number }>(
         `SELECT student_id FROM attendance 
-         WHERE date = ? AND session = ?`,
-        [today, session]
+         WHERE date = ? AND LOWER(session) = LOWER(?)`,
+        [today, session.trim()]
       );
+  
+      console.log("✅ Present records fetched:", present.length);
+      console.log("Present IDs:", present.map((p) => p.student_id));
+  
       const presentIds = new Set(present.map((p) => p.student_id));
-
-      // Counters
+  
+      // 🔎 Counters
       let totalMales = 0;
       let totalFemales = 0;
       let presentMales = 0;
       let presentFemales = 0;
-
+  
       students.forEach((s) => {
         const codeNum = parseInt(s.code.split("-").pop() || "0", 10);
         const isMale = codeNum >= 1 && codeNum <= 13;
-
+  
+        console.log(
+          `Student ID: ${s.id}, Code: ${s.code}, Gender: ${
+            isMale ? "Male" : "Female"
+          }, Present: ${presentIds.has(s.id)}`
+        );
+  
         if (isMale) {
           totalMales++;
           if (presentIds.has(s.id)) presentMales++;
@@ -149,8 +169,8 @@ export function useAttendanceDb() {
           if (presentIds.has(s.id)) presentFemales++;
         }
       });
-
-      return {
+  
+      const result: TodayStats = {
         totalMales,
         totalFemales,
         presentMales,
@@ -161,11 +181,15 @@ export function useAttendanceDb() {
         totalAbsent:
           totalMales + totalFemales - (presentMales + presentFemales),
       };
+  
+      console.log("📊 Computed Stats:", result);
+      return result;
     } catch (error) {
-      console.error("Error fetching today's stats:", error);
+      console.error("❌ Error fetching today's stats:", error);
       throw error;
     }
   };
+  
 
   // ✅ Reset attendance table
   const resetAttendance = async () => {
@@ -214,7 +238,6 @@ export function useAttendanceDb() {
     }
   };
 
-
   const getSessionCountsByDate = async (
     date: string
   ): Promise<Record<string, number>> => {
@@ -228,14 +251,14 @@ export function useAttendanceDb() {
         [date]
       );
       console.log("[getSessionCountsByDate] Raw query result:", rows);
-  
+
       const counts: Record<string, number> = {
         Morning: 0,
         Lunch: 0,
         "After Lunch": 0,
         Dismissal: 0,
       };
-  
+
       // normalize db values -> display values
       const sessionMap: Record<string, string> = {
         morning: "Morning",
@@ -244,15 +267,14 @@ export function useAttendanceDb() {
         after_lunch: "After Lunch",
         dismissal: "Dismissal",
       };
-  
+
       rows.forEach((row) => {
-        const normalized =
-          sessionMap[row.session.toLowerCase()] || row.session;
+        const normalized = sessionMap[row.session.toLowerCase()] || row.session;
         if (counts[normalized] !== undefined) {
           counts[normalized] += row.count;
         }
       });
-  
+
       console.log("[getSessionCountsByDate] Final normalized counts:", counts);
       return counts;
     } catch (error) {
@@ -264,11 +286,11 @@ export function useAttendanceDb() {
   const getAllDatesWithAttendance = async () => {
     try {
       const result = await db.getAllAsync(
-        'SELECT DISTINCT date FROM attendance ORDER BY date'
+        "SELECT DISTINCT date FROM attendance ORDER BY date"
       );
-      return result.map(row => row.date);
+      return result.map((row) => row.date);
     } catch (error) {
-      console.error('Error getting all dates with attendance:', error);
+      console.error("Error getting all dates with attendance:", error);
       return [];
     }
   };
@@ -280,6 +302,6 @@ export function useAttendanceDb() {
     hasAttendanceForDate,
     getAttendanceByDate,
     getSessionCountsByDate,
-    getAllDatesWithAttendance
+    getAllDatesWithAttendance,
   };
 }
