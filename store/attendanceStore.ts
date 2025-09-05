@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import * as SQLite from "expo-sqlite";
+import * as FileSystem from "expo-file-system";
+import { printToFileAsync } from 'expo-print';
+import * as Sharing from 'expo-sharing';
+
 
 const db = SQLite.openDatabaseSync("students.db");
 
@@ -224,5 +228,276 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       return [];
     }
   },
+
+  exportAttendance: async () => {
+    try {
+      const rows = await db.getAllAsync(
+        `SELECT a.id, s.name AS student_name, s.code AS student_code,
+                a.session, a.date, a.time, a.status
+         FROM attendance a
+         JOIN students s ON a.student_id = s.id
+         ORDER BY a.date DESC, a.time DESC`
+      );
+  
+      // Convert rows → CSV string
+      let csv = "id,student_name,student_code,session,date,time,status\n";
+      rows.forEach((row) => {
+        csv += `${row.id},"${row.student_name}",${row.student_code},${row.session},${row.date},${row.time},${row.status}\n`;
+      });
+  
+      // Save CSV to file
+      const fileUri = FileSystem.documentDirectory + "attendance_export.csv";
+      await FileSystem.writeAsStringAsync(fileUri, csv, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+  
+      console.log("✅ Attendance exported to:", fileUri);
+      return fileUri;
+    } catch (err) {
+      console.error("❌ Error exporting attendance:", err);
+      throw err;
+    }
+  },
+  
+  // CSV and PDF
+
+  // Add these functions to your store
+exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
+    try {
+      console.log(`📤 Exporting ${format.toUpperCase()} for date:`, date);
+      
+      // Query attendance for specific date
+      const rows = await db.getAllAsync<Attendance>(
+        `SELECT a.id, s.name AS student_name, s.code AS student_code,
+                a.session, a.date, a.time, a.status
+         FROM attendance a
+         JOIN students s ON a.student_id = s.id
+         WHERE a.date = ?
+         ORDER BY a.time ASC`,
+        [date]
+      );
+  
+      if (rows.length === 0) {
+        throw new Error('No attendance records found for this date');
+      }
+  
+      if (format === 'csv') {
+        return await get().generateCSV(rows, date);
+      } else {
+        return await get().generatePDF(rows, date);
+      }
+    } catch (err: any) {
+      console.error(`❌ Error exporting ${format}:`, err.message);
+      throw err;
+    }
+  },
+  
+ 
+  generateCSV: async (rows: any[], date: string) => {
+    // Group rows by session
+    const groupedBySession: Record<string, any[]> = {};
+    
+    rows.forEach((row) => {
+      const session = row.session;
+      if (!groupedBySession[session]) {
+        groupedBySession[session] = [];
+      }
+      groupedBySession[session].push(row);
+    });
+  
+    let csv = "";
+    
+    // Create sections for each session
+    Object.keys(groupedBySession).forEach((session, index) => {
+      const sessionRows = groupedBySession[session];
+      
+      // Add session header
+      csv += `\n=== ${session.toUpperCase()} SESSION ===\n`;
+      csv += "Student Name,Student Code,Date,Time,Status\n";
+      
+      // Add rows for this session
+      sessionRows.forEach((row) => {
+        csv += `"${row.student_name}",${row.student_code},${row.date},${row.time},${row.status}\n`;
+      });
+      
+      // Add session summary
+      csv += `\nTotal ${session} attendance: ${sessionRows.length}\n`;
+      
+      // Add spacing between sessions (except for the last one)
+      if (index < Object.keys(groupedBySession).length - 1) {
+        csv += "\n";
+      }
+    });
+  
+    // Add overall summary at the end
+    // csv += `\n=== DAILY SUMMARY ===\n`;
+    // csv += `Total attendance records: ${rows.length}\n`;
+    // csv += `Sessions recorded: ${Object.keys(groupedBySession).join(', ')}\n`;
+  
+    const fileName = `attendance_${date}_grouped.csv`;
+    const fileUri = FileSystem.documentDirectory + fileName;
+    
+    await FileSystem.writeAsStringAsync(fileUri, csv, {
+      encoding: FileSystem.EncodingType.UTF8,
+    });
+  
+    // Share the file
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(fileUri);
+    }
+  
+    console.log("✅ Grouped CSV exported:", fileUri);
+    return fileUri;
+  },
+
+  
+  generatePDF: async (rows: any[], date: string) => {
+    const formatDate = new Date(date).toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long", 
+      day: "numeric",
+    });
+  
+    // Group rows by session
+    const groupedBySession: Record<string, any[]> = {};
+    
+    rows.forEach((row) => {
+      const session = row.session;
+      if (!groupedBySession[session]) {
+        groupedBySession[session] = [];
+      }
+      groupedBySession[session].push(row);
+    });
+  
+    const html = `
+      <html>
+        <head>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 30px; 
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            h1 { 
+              color: #087444; 
+              text-align: center; 
+              margin-bottom: 30px; 
+              font-size: 24px;
+            }
+            h2 { 
+              color: #087444; 
+              border-bottom: 2px solid #4CAF50; 
+              padding-bottom: 8px; 
+              margin-top: 25px; 
+              font-size: 18px;
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-top: 15px; 
+              margin-bottom: 20px; 
+              font-size: 11px;
+            }
+            th, td { 
+              border: 1px solid #ddd; 
+              padding: 6px; 
+              text-align: left; 
+            }
+            th { 
+              background-color: #4CAF50; 
+              color: #4e4c4f; 
+              font-weight: bold;
+            }
+            .summary { 
+              background-color: #f9f9f9; 
+              padding: 15px; 
+              margin: 10px 0; 
+              border-radius: 5px; 
+            }
+            .session-summary { 
+              background-color: #e8f5e8; 
+              padding: 8px; 
+              margin: 10px 0; 
+              border-radius: 5px; 
+              font-size: 11px;
+            }
+            .overall-summary { 
+              background-color: #4CAF50; 
+              color: white; 
+              padding: 15px; 
+              margin: 20px 0; 
+              border-radius: 5px; 
+            }
+          </style>
+        </head>
+        <body>
+          <h1>REYES Attendance Grade 12</h1>
+          <div class="summary">
+            <strong>Date:</strong> ${formatDate}<br>
+            <strong>Total Records:</strong> ${rows.length}<br>
+            <strong>Sessions:</strong> ${Object.keys(groupedBySession).join(', ')}
+          </div>
+          
+          ${Object.keys(groupedBySession).map(session => {
+            const sessionRows = groupedBySession[session];
+            return `
+              <h2>${session.toUpperCase()} Session</h2>
+              <table>
+                <tr>
+                  <th>Student Name</th>
+                  <th>Student Code</th>
+                  <th>Time</th>
+                  <th>Status</th>
+                </tr>
+                ${sessionRows.map(row => `
+                  <tr>
+                    <td>${row.student_name}</td>
+                    <td>${row.student_code}</td>
+                    <td>${row.time}</td>
+                    <td>${row.status}</td>
+                  </tr>
+                `).join('')}
+              </table>
+              <div class="session-summary">
+                <strong>${session} Total:</strong> ${sessionRows.length} students
+              </div>
+            `;
+          }).join('')}
+          
+        </body>
+      </html>
+    `;
+  
+    const { uri } = await printToFileAsync({
+      html,
+      base64: false,
+      width: 612,  // Letter width in points
+      height: 1008, // Long page height (1.5x normal letter height)
+    });
+  
+    // Create custom filename with date
+    const customFileName = `${date}_REYES_attendance_grade_12.pdf`;
+    const customFileUri = FileSystem.documentDirectory + customFileName;
+    
+    // Copy the file with custom name
+    await FileSystem.copyAsync({
+      from: uri,
+      to: customFileUri
+    });
+  
+    // Share the file with custom name
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(customFileUri, {
+        dialogTitle: 'Export Attendance Report',
+        mimeType: 'application/pdf'
+      });
+    }
+  
+    console.log("✅ Custom PDF exported:", customFileUri);
+    return customFileUri;
+  },
+
   
 }));
