@@ -18,7 +18,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { LinearGradient } from "expo-linear-gradient";
 import { useStudentsDb } from "../../hooks/useStudentsDb";
 import { useAttendanceDb } from "../../hooks/useAttendanceDb";
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "@react-navigation/native";
 
 const ATTENDANCE_TYPES = [
   { id: "morning", label: "Morning", color: "#4CAF50" },
@@ -79,7 +79,8 @@ const responsive = {
 export default function Scan() {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
-  const [selectedAttendanceType, setSelectedAttendanceType] = useState("morning");
+  const [selectedAttendanceType, setSelectedAttendanceType] =
+    useState("morning");
   const [modalVisible, setModalVisible] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [scannedData, setScannedData] = useState(null);
@@ -87,6 +88,11 @@ export default function Scan() {
   const [errorCountdown, setErrorCountdown] = useState(3);
   const [dimensions, setDimensions] = useState(Dimensions.get("window"));
   const [errorMessage, setErrorMessage] = useState("");
+
+  // New state for scanning control
+  const [scanningEnabled, setScanningEnabled] = useState(true);
+  const [scanDelayActive, setScanDelayActive] = useState(false);
+  const [isScreenFocused, setIsScreenFocused] = useState(true);
 
   const { checkScannedStudent } = useStudentsDb();
   const [studentInfo, setStudentInfo] = useState(null);
@@ -113,6 +119,11 @@ export default function Scan() {
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const buttonPressAnim = useRef(new Animated.Value(1)).current;
 
+  // Refs for timers
+  const scanDelayTimeoutRef = useRef(null);
+  const modalTimeoutRef = useRef(null);
+  const errorTimeoutRef = useRef(null);
+
   // Handle orientation changes
   useEffect(() => {
     const subscription = Dimensions.addEventListener("change", ({ window }) => {
@@ -125,69 +136,117 @@ export default function Scan() {
   useFocusEffect(
     React.useCallback(() => {
       let isActive = true;
-  
+
       const fetchStats = async () => {
         const stats = await getTodayStats(selectedAttendanceType);
         if (isActive) setAttendanceStats(stats);
       };
-  
+
       fetchStats();
-  
+
       return () => {
         isActive = false; // cleanup
       };
     }, [selectedAttendanceType])
   );
+
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Screen is focused - enable scanning
+      setIsScreenFocused(true);
+      setScanningEnabled(true);
   
+      return () => {
+        // Screen is losing focus - disable scanning
+        setIsScreenFocused(false);
+        setScanningEnabled(false);
+        setScanned(false);
+  
+        // Clear any active timeouts
+        if (scanDelayTimeoutRef.current) {
+          clearTimeout(scanDelayTimeoutRef.current);
+        }
+      };
+    }, [])
+  );
+
   // Recalculate responsive values on dimension change
   const currentScreenSize = getScreenSize(dimensions.width);
   const currentIsTablet = dimensions.width >= BREAKPOINTS.medium;
   const currentIsLandscape = dimensions.width > dimensions.height;
 
-  // Scanning line animation
+  // Scanning line animation - only when scanning is enabled
   useEffect(() => {
-    const scanAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanLineAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scanLineAnim, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    scanAnimation.start();
-    return () => scanAnimation.stop();
-  }, []);
+    let scanAnimation;
+
+    if (scanningEnabled && !modalVisible && !errorModalVisible) {
+      scanAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scanLineAnim, {
+            toValue: 1,
+            duration: 2000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(scanLineAnim, {
+            toValue: 0,
+            duration: 0,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      scanAnimation.start();
+    } else {
+      // Stop animation when scanning is disabled
+      scanLineAnim.setValue(0);
+    }
+
+    return () => {
+      if (scanAnimation) {
+        scanAnimation.stop();
+      }
+    };
+  }, [scanningEnabled, modalVisible, errorModalVisible]);
+
+  // Disable scanning when modals are visible
+  useEffect(() => {
+    if (modalVisible || errorModalVisible) {
+      setScanningEnabled(false);
+    }
+  }, [modalVisible, errorModalVisible]);
 
   // Auto-close success modal after 5 seconds
   useEffect(() => {
-    let timer;
     if (modalVisible && countdown > 0) {
-      timer = setTimeout(() => {
+      modalTimeoutRef.current = setTimeout(() => {
         setCountdown(countdown - 1);
       }, 1000);
     } else if (modalVisible && countdown === 0) {
       handleCloseModal();
     }
-    return () => clearTimeout(timer);
+
+    return () => {
+      if (modalTimeoutRef.current) {
+        clearTimeout(modalTimeoutRef.current);
+      }
+    };
   }, [modalVisible, countdown]);
 
   // Auto-close error modal after 3 seconds
   useEffect(() => {
-    let timer;
     if (errorModalVisible && errorCountdown > 0) {
-      timer = setTimeout(() => {
+      errorTimeoutRef.current = setTimeout(() => {
         setErrorCountdown(errorCountdown - 1);
       }, 1000);
     } else if (errorModalVisible && errorCountdown === 0) {
       handleCloseErrorModal();
     }
-    return () => clearTimeout(timer);
+
+    return () => {
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+    };
   }, [errorModalVisible, errorCountdown]);
 
   // Success modal animation
@@ -255,6 +314,36 @@ export default function Scan() {
       ]).start();
     }
   }, [errorModalVisible]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      if (scanDelayTimeoutRef.current) {
+        clearTimeout(scanDelayTimeoutRef.current);
+      }
+      if (modalTimeoutRef.current) {
+        clearTimeout(modalTimeoutRef.current);
+      }
+      if (errorTimeoutRef.current) {
+        clearTimeout(errorTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Function to enable scanning after delay
+  const enableScanningAfterDelay = (delay = 2000) => {
+    setScanDelayActive(true);
+
+    if (scanDelayTimeoutRef.current) {
+      clearTimeout(scanDelayTimeoutRef.current);
+    }
+
+    scanDelayTimeoutRef.current = setTimeout(() => {
+      setScanningEnabled(true);
+      setScanDelayActive(false);
+      setScanned(false);
+    }, delay);
+  };
 
   if (!permission) {
     return (
@@ -343,7 +432,13 @@ export default function Scan() {
   }
 
   const handleBarcodeScanned = async ({ type, data }) => {
+    // Prevent scanning if already scanned, modals are open, or scanning is disabled
+    if (scanned || modalVisible || errorModalVisible || !scanningEnabled) {
+      return;
+    }
+
     setScanned(true);
+    setScanningEnabled(false);
 
     try {
       // check if student exists in DB
@@ -359,33 +454,43 @@ export default function Scan() {
         const stats = await getTodayStats(selectedAttendanceType);
         setAttendanceStats(stats);
         setModalVisible(true);
-
       } else {
         setErrorMessage("Student not found in database");
         setErrorModalVisible(true);
-        setScanned(false);
+        // Re-enable scanning after error with delay
+        enableScanningAfterDelay(3000);
       }
     } catch (error) {
       console.error("Attendance error:", error);
-      
+
       // Handle different types of errors
       if (error.message.includes("already recorded")) {
-        setErrorMessage("Attendance already recorded for this student in this session today");
+        setErrorMessage(
+          "Attendance already recorded for this student in this session today"
+        );
       } else {
         setErrorMessage("Failed to record attendance. Please try again.");
       }
-      
+
       setErrorModalVisible(true);
-      setScanned(false);
+      // Re-enable scanning after error with delay
+      enableScanningAfterDelay(3000);
     }
   };
 
   const handleCloseModal = () => {
     setModalVisible(false);
-    setScanned(false);
     setStudentInfo(null); // reset
     fadeAnim.setValue(0);
     scaleAnim.setValue(0.8);
+
+    // Clear any existing timeout
+    if (modalTimeoutRef.current) {
+      clearTimeout(modalTimeoutRef.current);
+    }
+
+    // Re-enable scanning after success modal with delay
+    enableScanningAfterDelay(1500);
   };
 
   const handleCloseErrorModal = () => {
@@ -393,6 +498,14 @@ export default function Scan() {
     setErrorMessage("");
     errorFadeAnim.setValue(0);
     errorScaleAnim.setValue(0.8);
+
+    // Clear any existing timeout
+    if (errorTimeoutRef.current) {
+      clearTimeout(errorTimeoutRef.current);
+    }
+
+    // Re-enable scanning after error modal with delay
+    enableScanningAfterDelay(1500);
   };
 
   const getSelectedAttendanceType = () => {
@@ -756,7 +869,15 @@ export default function Scan() {
             <CameraView
               style={styles.camera}
               facing="back"
-              onBarcodeScanned={scanned ? undefined : handleBarcodeScanned}
+              onBarcodeScanned={
+                scanningEnabled &&
+                !scanned &&
+                !modalVisible &&
+                !errorModalVisible &&
+                isScreenFocused  
+                  ? handleBarcodeScanned
+                  : undefined
+              }
               barcodeScannerSettings={{
                 barcodeTypes: [
                   "qr",
@@ -774,12 +895,13 @@ export default function Scan() {
                 <View
                   style={[styles.scannerFrame, responsiveStyles.scannerFrame]}
                 >
-                  {/* Animated corners */}
+                  {/* Animated corners - opacity based on scanning state */}
                   <View
                     style={[
                       styles.corner,
                       styles.topLeft,
                       responsiveStyles.corner,
+                      { opacity: scanningEnabled ? 1 : 0.3 },
                     ]}
                   />
                   <View
@@ -787,6 +909,7 @@ export default function Scan() {
                       styles.corner,
                       styles.topRight,
                       responsiveStyles.corner,
+                      { opacity: scanningEnabled ? 1 : 0.3 },
                     ]}
                   />
                   <View
@@ -794,6 +917,7 @@ export default function Scan() {
                       styles.corner,
                       styles.bottomLeft,
                       responsiveStyles.corner,
+                      { opacity: scanningEnabled ? 1 : 0.3 },
                     ]}
                   />
                   <View
@@ -801,33 +925,53 @@ export default function Scan() {
                       styles.corner,
                       styles.bottomRight,
                       responsiveStyles.corner,
+                      { opacity: scanningEnabled ? 1 : 0.3 },
                     ]}
                   />
 
-                  {/* Animated scan line */}
-                  <Animated.View
-                    style={[
-                      styles.scanLine,
-                      responsiveStyles.scanLine,
-                      {
-                        transform: [
-                          {
-                            translateY: scanLineAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [
-                                0,
-                                responsiveStyles.scannerFrame.height - 50,
-                              ],
-                            }),
-                          },
-                        ],
-                        opacity: scanLineAnim.interpolate({
-                          inputRange: [0, 0.5, 1],
-                          outputRange: [0.8, 1, 0.8],
-                        }),
-                      },
-                    ]}
-                  />
+                  {/* Animated scan line - only visible when scanning */}
+                  {scanningEnabled && !modalVisible && !errorModalVisible && (
+                    <Animated.View
+                      style={[
+                        styles.scanLine,
+                        responsiveStyles.scanLine,
+                        {
+                          transform: [
+                            {
+                              translateY: scanLineAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [
+                                  0,
+                                  responsiveStyles.scannerFrame.height - 50,
+                                ],
+                              }),
+                            },
+                          ],
+                          opacity: scanLineAnim.interpolate({
+                            inputRange: [0, 0.5, 1],
+                            outputRange: [0.8, 1, 0.8],
+                          }),
+                        },
+                      ]}
+                    />
+                  )}
+
+                  {/* Scanning status indicator */}
+                  {(!scanningEnabled || scanDelayActive) && (
+                    <View style={styles.scanStatusContainer}>
+                      <View style={styles.scanStatusCard}>
+                        <Text style={styles.scanStatusText}>
+                          {modalVisible
+                            ? "Processing..."
+                            : errorModalVisible
+                            ? "Error occurred"
+                            : scanDelayActive
+                            ? "Preparing scanner..."
+                            : "Scanner paused"}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
                 </View>
               </View>
             </CameraView>
@@ -991,11 +1135,21 @@ export default function Scan() {
                   <Text style={styles.errorIcon}>⚠</Text>
                 </LinearGradient>
               </View>
-              <Text style={[styles.modalTitle, responsiveStyles.modalTitle, styles.errorTitle]}>
+              <Text
+                style={[
+                  styles.modalTitle,
+                  responsiveStyles.modalTitle,
+                  styles.errorTitle,
+                ]}
+              >
                 Attendance Error
               </Text>
               <Text
-                style={[styles.modalSubtitle, responsiveStyles.modalSubtitle, styles.errorSubtitle]}
+                style={[
+                  styles.modalSubtitle,
+                  responsiveStyles.modalSubtitle,
+                  styles.errorSubtitle,
+                ]}
               >
                 {errorMessage}
               </Text>
@@ -1025,8 +1179,14 @@ export default function Scan() {
             {/* Error Modal Footer */}
             <View style={styles.modalFooter}>
               <View style={styles.countdownContainer}>
-                <View style={[styles.countdownCircle, styles.errorCountdownCircle]}>
-                  <Text style={[styles.countdownText, styles.errorCountdownText]}>{errorCountdown}</Text>
+                <View
+                  style={[styles.countdownCircle, styles.errorCountdownCircle]}
+                >
+                  <Text
+                    style={[styles.countdownText, styles.errorCountdownText]}
+                  >
+                    {errorCountdown}
+                  </Text>
                 </View>
                 <Text style={styles.autoCloseText}>Auto-closing</Text>
               </View>
@@ -1342,6 +1502,29 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 8,
+  },
+
+  // Scan Status Styles
+  scanStatusContainer: {
+    position: "absolute",
+    bottom: -40,
+    left: -50,
+    right: -50,
+    alignItems: "center",
+  },
+  scanStatusCard: {
+    backgroundColor: "rgba(0,0,0,0.8)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  scanStatusText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
   },
 
   // Success Modal

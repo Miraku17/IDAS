@@ -6,12 +6,12 @@ const db = SQLite.openDatabaseSync("students.db");
 export type Attendance = {
   id: number;
   student_id: number;
-  session: string;   // Morning, Lunch, After Lunch, Dismissal
+  session: string; // Morning, Lunch, After Lunch, Dismissal
   date: string;
   time: string;
   status: string;
-  name?: string;     // joined from students table
-  code?: string;     // student code e.g. 12-REYES-2025-001
+  name?: string; // joined from students table
+  code?: string; // student code e.g. 12-REYES-2025-001
 };
 
 export type TodayStats = {
@@ -54,28 +54,42 @@ export function useAttendanceDb() {
         hour12: true,
       });
 
+      // 🔑 Normalize session
+      const sessionMap: Record<string, string> = {
+        morning: "Morning",
+        lunch: "Lunch",
+        lunch_dismissal: "Lunch",
+        after_lunch: "After Lunch",
+        dismissal: "Dismissal",
+      };
+
+      const normalizedSession = sessionMap[session.toLowerCase()] || session; // fallback if not mapped
+
       // Check if attendance already exists for this student, session, and date
       const existingAttendance = await db.getFirstAsync<{ id: number }>(
         `SELECT id FROM attendance 
          WHERE student_id = ? AND session = ? AND date = ?`,
-        [studentId, session, date]
+        [studentId, normalizedSession, date]
       );
 
       if (existingAttendance) {
-        throw new Error("Attendance already recorded for this student in this session today");
+        throw new Error(
+          `Attendance already recorded for this student in ${normalizedSession} today`
+        );
       }
 
       // If no existing record, insert new attendance
       await db.runAsync(
         `INSERT INTO attendance (student_id, session, date, time, status)
          VALUES (?, ?, ?, ?, 'present')`,
-        [studentId, session, date, time]
+        [studentId, normalizedSession, date, time]
       );
 
-      console.log(`Attendance marked successfully for student ${studentId} in ${session} session`);
-      
+      console.log(
+        `✅ Attendance marked for student ${studentId} in ${normalizedSession}`
+      );
     } catch (error) {
-      console.error("Error marking attendance:", error);
+      console.error("❌ Error marking attendance:", error);
       throw error; // Re-throw to allow calling code to handle the error
     }
   };
@@ -93,7 +107,6 @@ export function useAttendanceDb() {
 
       console.log("Get Recent Scan Result:", result);
       return result;
-
     } catch (error) {
       console.error("Error fetching recent scans:", error);
       throw error;
@@ -145,9 +158,9 @@ export function useAttendanceDb() {
         absentMales: totalMales - presentMales,
         absentFemales: totalFemales - presentFemales,
         totalPresent: presentMales + presentFemales,
-        totalAbsent: (totalMales + totalFemales) - (presentMales + presentFemales),
+        totalAbsent:
+          totalMales + totalFemales - (presentMales + presentFemales),
       };
-
     } catch (error) {
       console.error("Error fetching today's stats:", error);
       throw error;
@@ -165,5 +178,108 @@ export function useAttendanceDb() {
     }
   };
 
-  return { markAttendance, getRecentScans, getTodayStats, resetAttendance };
+  // ✅ Check if a date has any attendance records (for calendar coloring)
+  const hasAttendanceForDate = async (date: string): Promise<boolean> => {
+    try {
+      console.log("[hasAttendanceForDate] Checking date:", date);
+      const row = await db.getFirstAsync<{ count: number }>(
+        `SELECT COUNT(*) as count FROM attendance WHERE date = ?`,
+        [date]
+      );
+      console.log("[hasAttendanceForDate] Query result:", row);
+      return (row?.count ?? 0) > 0;
+    } catch (error) {
+      console.error("[hasAttendanceForDate] Error:", error);
+      return false;
+    }
+  };
+
+  // ✅ Get all attendance details for a specific date
+  const getAttendanceByDate = async (date: string): Promise<Attendance[]> => {
+    try {
+      console.log("[getAttendanceByDate] Fetching attendance for:", date);
+      const rows = await db.getAllAsync<Attendance>(
+        `SELECT a.id, s.name, s.code, a.session, a.time, a.status, a.student_id, a.date
+         FROM attendance a
+         JOIN students s ON a.student_id = s.id
+         WHERE a.date = ?
+         ORDER BY a.session, a.time ASC`,
+        [date]
+      );
+      console.log("[getAttendanceByDate] Rows fetched:", rows);
+      return rows;
+    } catch (error) {
+      console.error("[getAttendanceByDate] Error:", error);
+      throw error;
+    }
+  };
+
+
+  const getSessionCountsByDate = async (
+    date: string
+  ): Promise<Record<string, number>> => {
+    try {
+      console.log("[getSessionCountsByDate] Getting session counts for:", date);
+      const rows = await db.getAllAsync<{ session: string; count: number }>(
+        `SELECT session, COUNT(*) as count
+         FROM attendance
+         WHERE date = ?
+         GROUP BY session`,
+        [date]
+      );
+      console.log("[getSessionCountsByDate] Raw query result:", rows);
+  
+      const counts: Record<string, number> = {
+        Morning: 0,
+        Lunch: 0,
+        "After Lunch": 0,
+        Dismissal: 0,
+      };
+  
+      // normalize db values -> display values
+      const sessionMap: Record<string, string> = {
+        morning: "Morning",
+        lunch: "Lunch",
+        lunch_dismissal: "Lunch",
+        after_lunch: "After Lunch",
+        dismissal: "Dismissal",
+      };
+  
+      rows.forEach((row) => {
+        const normalized =
+          sessionMap[row.session.toLowerCase()] || row.session;
+        if (counts[normalized] !== undefined) {
+          counts[normalized] += row.count;
+        }
+      });
+  
+      console.log("[getSessionCountsByDate] Final normalized counts:", counts);
+      return counts;
+    } catch (error) {
+      console.error("[getSessionCountsByDate] Error:", error);
+      throw error;
+    }
+  };
+
+  const getAllDatesWithAttendance = async () => {
+    try {
+      const result = await db.getAllAsync(
+        'SELECT DISTINCT date FROM attendance ORDER BY date'
+      );
+      return result.map(row => row.date);
+    } catch (error) {
+      console.error('Error getting all dates with attendance:', error);
+      return [];
+    }
+  };
+  return {
+    markAttendance,
+    getRecentScans,
+    getTodayStats,
+    resetAttendance,
+    hasAttendanceForDate,
+    getAttendanceByDate,
+    getSessionCountsByDate,
+    getAllDatesWithAttendance
+  };
 }
