@@ -18,6 +18,15 @@ export type Attendance = {
   code?: string;
 };
 
+export type StudentsByCategory = {
+  presentMales: Array<{ id: number; name: string; code: string }>;
+  presentFemales: Array<{ id: number; name: string; code: string }>;
+  absentMales: Array<{ id: number; name: string; code: string }>;
+  absentFemales: Array<{ id: number; name: string; code: string }>;
+};
+
+
+
 export type TodayStats = {
   totalMales: number;
   totalFemales: number;
@@ -35,6 +44,7 @@ type AttendanceState = {
   sessionCounts: Record<string, number>;
   loading: boolean;
   error: string | null;
+  studentsByCategory: StudentsByCategory | null;
 
   markAttendance: (studentId: number, session: string) => Promise<void>;
   fetchRecentScans: () => Promise<void>;
@@ -43,6 +53,8 @@ type AttendanceState = {
   fetchAttendanceByDate: (date: string) => Promise<void>; 
   resetAttendance: () => Promise<void>;
   fetchAllAttendance: () => Promise<Attendance[]>; 
+  fetchStudentsByCategory: (session: string, date?: string) => Promise<void>;
+
 };
 
 export const useAttendanceStore = create<AttendanceState>((set, get) => ({
@@ -502,4 +514,79 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
   },
 
   
+  fetchStudentsByCategory: async (session: string, date?: string) => {
+    try {
+      set({ loading: true, error: null });
+      
+      const targetDate = date || new Date().toLocaleDateString("en-CA");
+      console.log("🔍 Fetching for session:", session, "date:", targetDate);
+      
+      // Get all students
+      const allStudents = await db.getAllAsync<{ id: number; name: string; code: string }>(
+        `SELECT id, name, code FROM students ORDER BY name`
+      );
+      console.log("👥 All students:", allStudents.length);
+      console.log("🧪 First student from DB:", allStudents[0]); // Debug: Check student structure
+      
+      // Get present students for the session/date
+      const presentStudents = await db.getAllAsync<{ student_id: number }>(
+        `SELECT student_id FROM attendance WHERE date = ? AND session = ?`,
+        [targetDate, session]
+      );
+      console.log("✅ Present students:", presentStudents.length);
+      console.log("🧪 Present student IDs:", presentStudents.map(p => p.student_id)); // Debug: Check present IDs
+      
+      const presentIds = new Set(presentStudents.map(p => p.student_id));
+      
+      // Categorize students
+      const result = {
+        presentMales: [],
+        presentFemales: [],
+        absentMales: [],
+        absentFemales: []
+      };
+      
+      allStudents.forEach(student => {
+        const codeNum = parseInt(student.code.split("-").pop() || "0", 10);
+        const isMale = codeNum >= 1 && codeNum <= 13;
+        const isPresent = presentIds.has(student.id);
+        
+        console.log(`🧪 Student: ${student.name}, Code: ${student.code}, CodeNum: ${codeNum}, isMale: ${isMale}, isPresent: ${isPresent}`); // Debug each student
+        
+        if (isMale) {
+          if (isPresent) {
+            result.presentMales.push(student);
+          } else {
+            result.absentMales.push(student);
+          }
+        } else {
+          if (isPresent) {
+            result.presentFemales.push(student);
+          } else {
+            result.absentFemales.push(student);
+          }
+        }
+      });
+      
+      // Debug: Log actual arrays, not just lengths
+      console.log("🧪 Present males (actual array):", result.presentMales);
+      console.log("🧪 Absent females sample:", result.absentFemales.slice(0, 2)); // Show first 2
+      
+      console.log("📊 Final result counts:", {
+        presentMales: result.presentMales.length,
+        presentFemales: result.presentFemales.length,
+        absentMales: result.absentMales.length,
+        absentFemales: result.absentFemales.length
+      });
+      
+      set({ studentsByCategory: result, loading: false });
+      return result;
+      
+    } catch (err: any) {
+      console.error("❌ Error fetching students by category:", err.message);
+      set({ error: err.message, loading: false });
+      throw err;
+    }
+  },
+
 }));

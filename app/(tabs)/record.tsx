@@ -57,20 +57,46 @@ export default function RecordsScreen() {
   );
   const [markedDates, setMarkedDates] = useState({});
 
+  // Function to fetch all dates with attendance data
+  const fetchAttendanceDates = async () => {
+    try {
+      const allAttendance = await useAttendanceStore.getState().fetchAllAttendance();
+      const datesWithData = new Set();
+      
+      allAttendance.forEach(record => {
+        datesWithData.add(record.date);
+      });
+
+      // Create marked dates object
+      const marks = {};
+      
+      // Mark all dates with attendance data
+      datesWithData.forEach(date => {
+        marks[date] = {
+          marked: true,
+          dotColor: '#4CAF50',
+        };
+      });
+
+      // Highlight selected date
+      marks[selectedDate] = {
+        ...marks[selectedDate],
+        selected: true,
+        selectedColor: '#4CAF50',
+        selectedTextColor: '#ffffff',
+      };
+
+      setMarkedDates(marks);
+    } catch (error) {
+      console.error('Error fetching attendance dates:', error);
+    }
+  };
+
   // Update attendance whenever date changes
   useEffect(() => {
     fetchAttendanceByDate(selectedDate);
     fetchSessionCounts(selectedDate);
-
-    // Mark selected date in calendar
-    setMarkedDates({
-      [selectedDate]: {
-        selected: true,
-        selectedColor: "#4CAF50",
-        marked: true,
-        dotColor: "#4CAF50",
-      },
-    });
+    fetchAttendanceDates(); // Fetch and mark dates with data
   }, [selectedDate]);
 
   useFocusEffect(
@@ -78,6 +104,7 @@ export default function RecordsScreen() {
       // Refresh data when screen comes into focus
       fetchAttendanceByDate(selectedDate);
       fetchSessionCounts(selectedDate);
+      fetchAttendanceDates(); // Refresh calendar marks
     }, [selectedDate])
   );
 
