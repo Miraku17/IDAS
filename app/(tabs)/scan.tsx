@@ -672,6 +672,7 @@ export default function Scan() {
       attendanceButton: {
         flex: 1,
         minHeight: currentIsTablet ? 36 : 32,
+        minWidth: 0
       },
       attendanceButtonGradient: {
         paddingHorizontal: padding * 0.4,
@@ -924,6 +925,7 @@ export default function Scan() {
                     shadowRadius: selectedAttendanceType === type.id ? 4 : 2,
                     elevation: selectedAttendanceType === type.id ? 3 : 2,
                   }}
+                  pointerEvents="box-none"
                 >
                   <LinearGradient
                     colors={

@@ -60,21 +60,23 @@ export default function RecordsScreen() {
   // Function to fetch all dates with attendance data
   const fetchAttendanceDates = async () => {
     try {
-      const allAttendance = await useAttendanceStore.getState().fetchAllAttendance();
+      const allAttendance = await useAttendanceStore
+        .getState()
+        .fetchAllAttendance();
       const datesWithData = new Set();
-      
-      allAttendance.forEach(record => {
+
+      allAttendance.forEach((record) => {
         datesWithData.add(record.date);
       });
 
       // Create marked dates object
       const marks = {};
-      
+
       // Mark all dates with attendance data
-      datesWithData.forEach(date => {
+      datesWithData.forEach((date) => {
         marks[date] = {
           marked: true,
-          dotColor: '#4CAF50',
+          dotColor: "#4CAF50",
         };
       });
 
@@ -82,13 +84,13 @@ export default function RecordsScreen() {
       marks[selectedDate] = {
         ...marks[selectedDate],
         selected: true,
-        selectedColor: '#4CAF50',
-        selectedTextColor: '#ffffff',
+        selectedColor: "#4CAF50",
+        selectedTextColor: "#ffffff",
       };
 
       setMarkedDates(marks);
     } catch (error) {
-      console.error('Error fetching attendance dates:', error);
+      console.error("Error fetching attendance dates:", error);
     }
   };
 
@@ -174,7 +176,7 @@ export default function RecordsScreen() {
             markedDates={markedDates}
             theme={{
               backgroundColor: "transparent",
-              calendarBackground: "transparent",
+              calendarBackground: "#ffffff",
               textSectionTitleColor: "#4CAF50",
               selectedDayBackgroundColor: "#4CAF50",
               selectedDayTextColor: "#ffffff",
@@ -197,8 +199,8 @@ export default function RecordsScreen() {
               textMonthFontSize: 18,
               textDayHeaderFontSize: 14,
             }}
-            style={styles.calendar}
-          />
+            style={[styles.calendar, { backgroundColor: "#ffffff" }]} // 👈 also here
+            />
         </View>
 
         {/* Selected Date Info */}
