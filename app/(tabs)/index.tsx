@@ -96,7 +96,7 @@ export default function HomeScreen() {
         >
           {/* Top Section */}
           <View style={styles.topSection}>
-            <Text style={styles.sectionTitle}>IDAS - Attendance Checker</Text>
+            <Text style={styles.sectionTitle}>IDAS</Text>
             <Text style={styles.subSectionTitle}>Grade 12 – Reyes</Text>
             <View style={styles.dateTimeContainer}>
               <Text style={styles.dateText}>{currentDate}</Text>

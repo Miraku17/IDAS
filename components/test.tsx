@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, Button, ScrollView, StyleSheet, Alert } from "react-native";
-import { useStudentsDb, Student } from "../../hooks/useStudentsDb";
-import { useAttendanceStore } from "../../store/attendanceStore"; 
+import { useStudentsDb, Student } from "../hooks/useStudentsDb";
+import { useAttendanceStore } from "../store/attendanceStore"; 
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as Updates from 'expo-updates';

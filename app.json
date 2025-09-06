@@ -44,8 +44,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5556ec3a-8101-48c6-9823-c9328facf075"
+        "projectId": "da82abca-2c60-4d73-8958-6de195a5a5b3"
       }
-    }
+    },
+    "owner": "zian17"
   }
 }

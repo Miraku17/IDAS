@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import React, { useEffect } from "react";
+import React from "react";
 import { Platform } from "react-native";
 
 import { HapticTab } from "@/components/HapticTab";
@@ -7,37 +7,9 @@ import { IconSymbol } from "@/components/ui/IconSymbol";
 import TabBarBackground from "@/components/ui/TabBarBackground";
 import { Colors } from "@/constants/Colors";
 import { useColorScheme } from "@/hooks/useColorScheme";
-import { useInitializeTablesStore } from "@/store/initializeTablesStore";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const { initializeTables, isInitialized, isInitializing, initializationError } = useInitializeTablesStore();
-
-  // Initialize database when tab layout mounts
-  useEffect(() => {
-    const initDB = async () => {
-      try {
-        console.log("🚀 Starting database initialization from TabLayout...");
-        await initializeTables();
-        console.log("✅ Database initialization completed in TabLayout");
-      } catch (error) {
-        console.error("❌ Database initialization failed in TabLayout:", error);
-      }
-    };
-
-    initDB();
-  }, [initializeTables]);
-
-  // Optional: Log status changes for debugging
-  useEffect(() => {
-    if (isInitialized) {
-      console.log("✅ Database is ready for use");
-    } else if (isInitializing) {
-      console.log("⏳ Database initialization in progress...");
-    } else if (initializationError) {
-      console.error("❌ Database initialization error:", initializationError);
-    }
-  }, [isInitialized, isInitializing, initializationError]);
 
   return (
     <Tabs
@@ -51,7 +23,6 @@ export default function TabLayout() {
         
         // Interactive elements
         tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
         
         // Hide labels
         tabBarShowLabel: false,
