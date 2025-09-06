@@ -4,6 +4,7 @@ import { useStudentsDb, Student } from "../../hooks/useStudentsDb";
 import { useAttendanceStore } from "../../store/attendanceStore"; 
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as Updates from 'expo-updates';
 
 export default function TestDbScreen() {
   const { getStudents, resetStudents, clearStudents } = useStudentsDb();
@@ -53,6 +54,30 @@ export default function TestDbScreen() {
     }
   };
 
+  const resetToSplash = async () => {
+    Alert.alert(
+      "Reset App",
+      "This will restart the app and show the splash screen again. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Reset", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Restart the app to show splash again
+              await Updates.reloadAsync();
+            } catch (error) {
+              console.log("Reload error:", error);
+              // Fallback: just show an alert if reload fails
+              Alert.alert("Info", "Please manually restart the app to see the splash screen.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <View style={styles.container}>
       {/* Buttons */}
@@ -63,6 +88,7 @@ export default function TestDbScreen() {
         <Button title="Reset Attendance Table" onPress={resetAttendanceTable} color="green" />
         <Button title="Show Attendance" onPress={loadAttendance} color="blue" />
         <Button title="Export Attendance CSV" onPress={handleExportAttendance} color="#4CAF50" />
+        <Button title="🔄 Reset to Splash" onPress={resetToSplash} color="#9C27B0" />
       </View>
 
       {/* Scrollable lists */}

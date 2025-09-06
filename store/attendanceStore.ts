@@ -78,9 +78,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
   
       if (existing) {
         console.warn("⚠️ Already marked for this session");
-        // throw new Error("Already marked for this session");
         return { success: false, message: "Already marked for this session" };
-
       }
   
       // Insert new attendance record
@@ -96,6 +94,10 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       console.log("🔄 Fetching recent scans...");
       await get().fetchRecentScans();
       console.log("✅ Recent scans updated");
+  
+      // ✅ ADD THIS RETURN STATEMENT FOR SUCCESS CASE
+      return { success: true, message: "Attendance recorded successfully" };
+  
     } catch (err: any) {
       console.error("❌ [markAttendance] Error:", err.message);
       set({ error: err.message });

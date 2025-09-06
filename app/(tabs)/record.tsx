@@ -15,6 +15,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calendar } from "react-native-calendars";
 import { useAttendanceStore } from "../../store/attendanceStore";
+import { useFocusEffect } from "@react-navigation/native";
 
 const { width: screenWidth } = Dimensions.get("window");
 const isTablet = screenWidth >= 600;
@@ -71,6 +72,14 @@ export default function RecordsScreen() {
       },
     });
   }, [selectedDate]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Refresh data when screen comes into focus
+      fetchAttendanceByDate(selectedDate);
+      fetchSessionCounts(selectedDate);
+    }, [selectedDate])
+  );
 
   const onDayPress = (day: { dateString: string }) => {
     setSelectedDate(day.dateString);
@@ -420,9 +429,9 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     borderRadius: 15,
-    overflow: 'hidden',
+    overflow: "hidden",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -430,9 +439,9 @@ const styles = StyleSheet.create({
   exportButtonGradient: {
     paddingVertical: 24,
     paddingHorizontal: 25,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   exportButtonIcon: {
     fontSize: 24,
@@ -440,8 +449,8 @@ const styles = StyleSheet.create({
   },
   exportButtonText: {
     fontSize: isTablet ? 18 : 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
+    fontWeight: "bold",
+    color: "#ffffff",
     letterSpacing: 0.5,
   },
   exportSectionTitle: {
