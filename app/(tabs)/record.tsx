@@ -155,8 +155,7 @@ export default function RecordsScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       {/* Header */}
-      <LinearGradient
-        colors={["#ffffff", "#f0f8f0", "#e8f5e8"]}
+      <View
         style={styles.headerGradient}
       >
         <View style={styles.headerContent}>
@@ -165,7 +164,7 @@ export default function RecordsScreen() {
             Track daily attendance history
           </Text>
         </View>
-      </LinearGradient>
+      </View>
 
       <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator>
         {/* Calendar */}
@@ -363,8 +362,13 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
+     backgroundColor: "#F1F8E9"
   },
-  headerContent: { alignItems: "center" },
+  headerContent: { 
+    alignItems: "center",
+    justifyContent: "center", 
+    minHeight: 60, 
+  },
   headerTitle: {
     fontSize: isTablet ? 32 : 28,
     fontWeight: "bold",
@@ -432,11 +436,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderRadius: 15,
     overflow: "hidden",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    backgroundColor: "transparent", 
+    elevation: 0, 
+    shadowOpacity: 0, 
   },
   summaryCardGradient: { padding: 15 },
   summaryCardContent: { alignItems: "center" },

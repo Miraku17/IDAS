@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
 
   // Stats Card
   statsCard: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 24,
     shadowColor: "#000",
@@ -485,7 +485,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   recentList: {
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     overflow: "hidden",
     shadowColor: "#000",
