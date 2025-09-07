@@ -682,7 +682,7 @@ export default function Scan() {
         minHeight: currentIsTablet ? 36 : 32,
       },
       attendanceButtonText: {
-        fontSize: currentIsTablet ? fontSize.small : 11,
+        fontSize: currentIsTablet ? 10.5 : 11,
       },
       scannerTitle: {
         fontSize: fontSize.xlarge,

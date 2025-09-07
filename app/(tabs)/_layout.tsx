@@ -135,7 +135,7 @@ export default function TabLayout() {
                       ? dimensions.iconSize.focused
                       : dimensions.iconSize.unfocused
                   }
-                  name={focused ? "house.fill" : "house"}
+                  name={focused ? "grid.circle" : "grid.circle.fill"}
                   color={iconColor}
                 />
               </View>
