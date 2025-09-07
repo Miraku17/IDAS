@@ -15,6 +15,7 @@ import { ThemedView } from "@/components/ThemedView";
 import { LinearGradient } from "expo-linear-gradient";
 import { Calendar } from "react-native-calendars";
 import { useAttendanceStore } from "../../store/attendanceStore";
+import { useFocusEffect } from "@react-navigation/native";
 
 const { width: screenWidth } = Dimensions.get("window");
 const isTablet = screenWidth >= 600;
@@ -56,21 +57,58 @@ export default function RecordsScreen() {
   );
   const [markedDates, setMarkedDates] = useState({});
 
+  // Function to fetch all dates with attendance data
+  const fetchAttendanceDates = async () => {
+    try {
+      const allAttendance = await useAttendanceStore
+        .getState()
+        .fetchAllAttendance();
+      const datesWithData = new Set();
+
+      allAttendance.forEach((record) => {
+        datesWithData.add(record.date);
+      });
+
+      // Create marked dates object
+      const marks = {};
+
+      // Mark all dates with attendance data
+      datesWithData.forEach((date) => {
+        marks[date] = {
+          marked: true,
+          dotColor: "#4CAF50",
+        };
+      });
+
+      // Highlight selected date
+      marks[selectedDate] = {
+        ...marks[selectedDate],
+        selected: true,
+        selectedColor: "#4CAF50",
+        selectedTextColor: "#ffffff",
+      };
+
+      setMarkedDates(marks);
+    } catch (error) {
+      console.error("Error fetching attendance dates:", error);
+    }
+  };
+
   // Update attendance whenever date changes
   useEffect(() => {
     fetchAttendanceByDate(selectedDate);
     fetchSessionCounts(selectedDate);
-
-    // Mark selected date in calendar
-    setMarkedDates({
-      [selectedDate]: {
-        selected: true,
-        selectedColor: "#4CAF50",
-        marked: true,
-        dotColor: "#4CAF50",
-      },
-    });
+    fetchAttendanceDates(); // Fetch and mark dates with data
   }, [selectedDate]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Refresh data when screen comes into focus
+      fetchAttendanceByDate(selectedDate);
+      fetchSessionCounts(selectedDate);
+      fetchAttendanceDates(); // Refresh calendar marks
+    }, [selectedDate])
+  );
 
   const onDayPress = (day: { dateString: string }) => {
     setSelectedDate(day.dateString);
@@ -138,7 +176,7 @@ export default function RecordsScreen() {
             markedDates={markedDates}
             theme={{
               backgroundColor: "transparent",
-              calendarBackground: "transparent",
+              calendarBackground: "#ffffff",
               textSectionTitleColor: "#4CAF50",
               selectedDayBackgroundColor: "#4CAF50",
               selectedDayTextColor: "#ffffff",
@@ -161,8 +199,8 @@ export default function RecordsScreen() {
               textMonthFontSize: 18,
               textDayHeaderFontSize: 14,
             }}
-            style={styles.calendar}
-          />
+            style={[styles.calendar, { backgroundColor: "#ffffff" }]} // 👈 also here
+            />
         </View>
 
         {/* Selected Date Info */}
@@ -420,9 +458,9 @@ const styles = StyleSheet.create({
   },
   exportButton: {
     borderRadius: 15,
-    overflow: 'hidden',
+    overflow: "hidden",
     elevation: 5,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -430,9 +468,9 @@ const styles = StyleSheet.create({
   exportButtonGradient: {
     paddingVertical: 24,
     paddingHorizontal: 25,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
   },
   exportButtonIcon: {
     fontSize: 24,
@@ -440,8 +478,8 @@ const styles = StyleSheet.create({
   },
   exportButtonText: {
     fontSize: isTablet ? 18 : 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
+    fontWeight: "bold",
+    color: "#ffffff",
     letterSpacing: 0.5,
   },
   exportSectionTitle: {

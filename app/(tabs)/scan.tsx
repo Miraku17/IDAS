@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import { CameraView, Camera, useCameraPermissions } from "expo-camera";
 import { ThemedText } from "@/components/ThemedText";
@@ -20,7 +21,7 @@ import { useStudentsDb } from "../../hooks/useStudentsDb";
 import { useAttendanceDb } from "../../hooks/useAttendanceDb";
 import { useFocusEffect } from "@react-navigation/native";
 
-import { useAttendanceStore } from "../../store/attendanceStore"; 
+import { useAttendanceStore } from "../../store/attendanceStore";
 
 const ATTENDANCE_TYPES = [
   { id: "morning", label: "Morning", color: "#4CAF50" },
@@ -86,7 +87,7 @@ export default function Scan() {
   const [modalVisible, setModalVisible] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [scannedData, setScannedData] = useState(null);
-  const [countdown, setCountdown] = useState(5);
+  const [countdown, setCountdown] = useState(3);
   const [errorCountdown, setErrorCountdown] = useState(3);
   const [dimensions, setDimensions] = useState(Dimensions.get("window"));
   const [errorMessage, setErrorMessage] = useState("");
@@ -96,10 +97,22 @@ export default function Scan() {
   const [scanDelayActive, setScanDelayActive] = useState(false);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
 
+  // New State of modal list of present or absent students
+
+  const [studentListModalVisible, setStudentListModalVisible] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [studentListLoading, setStudentListLoading] = useState(false);
+
   const { checkScannedStudent } = useStudentsDb();
   const [studentInfo, setStudentInfo] = useState(null);
 
-  const { markAttendance, fetchTodayStats, todayStats } = useAttendanceStore();
+  const {
+    markAttendance,
+    fetchTodayStats,
+    todayStats,
+    fetchStudentsByCategory,
+    studentsByCategory,
+  } = useAttendanceStore();
 
   // Animation refs
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -109,10 +122,73 @@ export default function Scan() {
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const buttonPressAnim = useRef(new Animated.Value(1)).current;
 
+  // Add animation refs for the student list modal
+  const studentListFadeAnim = useRef(new Animated.Value(0)).current;
+  const studentListScaleAnim = useRef(new Animated.Value(0.8)).current;
+
   // Refs for timers
   const scanDelayTimeoutRef = useRef(null);
   const modalTimeoutRef = useRef(null);
   const errorTimeoutRef = useRef(null);
+
+  const handleStatCardPress = async (category) => {
+    try {
+      setStudentListLoading(true);
+      setSelectedCategory(category);
+
+      // Fetch the students for the current session
+      await fetchStudentsByCategory(selectedAttendanceType);
+
+      // Only show modal after data is loaded
+      setStudentListModalVisible(true);
+    } catch (error) {
+      console.error("Error fetching students:", error);
+      setErrorMessage("Failed to load student list");
+      setErrorModalVisible(true);
+    } finally {
+      setStudentListLoading(false);
+    }
+  };
+
+  // Add this function to close the student list modal
+  const handleCloseStudentListModal = () => {
+    setStudentListModalVisible(false);
+    setSelectedCategory(null);
+    studentListFadeAnim.setValue(0);
+    studentListScaleAnim.setValue(0.8);
+  };
+
+  // Add animation effect for student list modal
+  useEffect(() => {
+    if (studentListModalVisible) {
+      Animated.parallel([
+        Animated.timing(studentListFadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(studentListScaleAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(studentListFadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(studentListScaleAnim, {
+          toValue: 0.8,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [studentListModalVisible]);
 
   // Handle orientation changes
   useEffect(() => {
@@ -240,7 +316,7 @@ export default function Scan() {
   // Success modal animation
   useEffect(() => {
     if (modalVisible) {
-      setCountdown(5);
+      setCountdown(3);
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
@@ -319,7 +395,7 @@ export default function Scan() {
   }, []);
 
   // Function to enable scanning after delay
-  const enableScanningAfterDelay = (delay = 2000) => {
+  const enableScanningAfterDelay = (delay = 200) => {
     setScanDelayActive(true);
 
     if (scanDelayTimeoutRef.current) {
@@ -419,32 +495,31 @@ export default function Scan() {
     );
   }
 
-
   const handleBarcodeScanned = async ({ type, data }) => {
     if (scanned || modalVisible || errorModalVisible || !scanningEnabled) {
       return;
     }
-  
+
     setScanned(true);
     setScanningEnabled(false);
-  
+
     try {
       const student = await checkScannedStudent(data);
       console.log("Scanned Student Info", student);
-  
+
       if (student) {
         setStudentInfo(student);
-  
+
         // ✅ Use the returned result
         const result = await markAttendance(student.id, selectedAttendanceType);
-  
+
         if (result.success) {
           await fetchTodayStats(selectedAttendanceType);
           setModalVisible(true);
         } else {
           setErrorMessage(result.message);
           setErrorModalVisible(true);
-          enableScanningAfterDelay(3000);
+          enableScanningAfterDelay(500);
         }
       } else {
         setErrorMessage("Student not found in database");
@@ -459,8 +534,6 @@ export default function Scan() {
     }
   };
 
-  
-  
   const handleCloseModal = () => {
     setModalVisible(false);
     setStudentInfo(null); // reset
@@ -473,7 +546,7 @@ export default function Scan() {
     }
 
     // Re-enable scanning after success modal with delay
-    enableScanningAfterDelay(1500);
+    enableScanningAfterDelay(100);
   };
 
   const handleCloseErrorModal = () => {
@@ -488,7 +561,7 @@ export default function Scan() {
     }
 
     // Re-enable scanning after error modal with delay
-    enableScanningAfterDelay(1500);
+    enableScanningAfterDelay(100);
   };
 
   const getSelectedAttendanceType = () => {
@@ -599,6 +672,7 @@ export default function Scan() {
       attendanceButton: {
         flex: 1,
         minHeight: currentIsTablet ? 36 : 32,
+        minWidth: 0
       },
       attendanceButtonGradient: {
         paddingHorizontal: padding * 0.4,
@@ -659,6 +733,43 @@ export default function Scan() {
 
   const responsiveStyles = getResponsiveStyles();
 
+  const getCategoryDetails = (category) => {
+    const details = {
+      presentMales: {
+        title: "Present Males",
+        color: "#4CAF50",
+        icon: "👨‍🎓",
+        students: studentsByCategory?.presentMales || [],
+      },
+      presentFemales: {
+        title: "Present Females",
+        color: "#4CAF50",
+        icon: "👩‍🎓",
+        students: studentsByCategory?.presentFemales || [],
+      },
+      absentMales: {
+        title: "Absent Males",
+        color: "#f44336",
+        icon: "👨‍💼",
+        students: studentsByCategory?.absentMales || [],
+      },
+      absentFemales: {
+        title: "Absent Females",
+        color: "#f44336",
+        icon: "👩‍💼",
+        students: studentsByCategory?.absentFemales || [],
+      },
+    };
+    return (
+      details[category] || {
+        title: "Students",
+        color: "#666",
+        icon: "👤",
+        students: [],
+      }
+    );
+  };
+
   return (
     <ThemedView style={[styles.container, responsiveStyles.container]}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -678,7 +789,11 @@ export default function Scan() {
             style={[styles.statsContainer, responsiveStyles.statsContainer]}
           >
             <View style={[styles.statsRow, responsiveStyles.statsRow]}>
-              <View style={[styles.statCard, responsiveStyles.statCard]}>
+              <TouchableOpacity
+                style={[styles.statCard, responsiveStyles.statCard]}
+                onPress={() => handleStatCardPress("presentMales")}
+                activeOpacity={0.7}
+              >
                 <View
                   style={[styles.statIndicator, { backgroundColor: "#4CAF50" }]}
                 />
@@ -688,8 +803,12 @@ export default function Scan() {
                 <Text style={[styles.statValue, responsiveStyles.statValue]}>
                   {todayStats?.presentMales ?? 0}
                 </Text>
-              </View>
-              <View style={[styles.statCard, responsiveStyles.statCard]}>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.statCard, responsiveStyles.statCard]}
+                onPress={() => handleStatCardPress("presentFemales")}
+                activeOpacity={0.7}
+              >
                 <View
                   style={[styles.statIndicator, { backgroundColor: "#4CAF50" }]}
                 />
@@ -699,11 +818,15 @@ export default function Scan() {
                 <Text style={[styles.statValue, responsiveStyles.statValue]}>
                   {todayStats?.presentFemales ?? 0}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             <View style={[styles.statsRow, responsiveStyles.statsRow]}>
-              <View style={[styles.statCard, responsiveStyles.statCard]}>
+              <TouchableOpacity
+                style={[styles.statCard, responsiveStyles.statCard]}
+                onPress={() => handleStatCardPress("absentMales")}
+                activeOpacity={0.7}
+              >
                 <View
                   style={[styles.statIndicator, { backgroundColor: "#f44336" }]}
                 />
@@ -719,8 +842,14 @@ export default function Scan() {
                 >
                   {todayStats?.absentMales ?? 0}
                 </Text>
-              </View>
-              <View style={[styles.statCard, responsiveStyles.statCard]}>
+              </TouchableOpacity>
+
+              {/* Absent Females - Make it touchable */}
+              <TouchableOpacity
+                style={[styles.statCard, responsiveStyles.statCard]}
+                onPress={() => handleStatCardPress("absentFemales")}
+                activeOpacity={0.7}
+              >
                 <View
                   style={[styles.statIndicator, { backgroundColor: "#f44336" }]}
                 />
@@ -736,7 +865,7 @@ export default function Scan() {
                 >
                   {todayStats?.absentFemales ?? 0}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </LinearGradient>
@@ -796,6 +925,7 @@ export default function Scan() {
                     shadowRadius: selectedAttendanceType === type.id ? 4 : 2,
                     elevation: selectedAttendanceType === type.id ? 3 : 2,
                   }}
+                  pointerEvents="box-none"
                 >
                   <LinearGradient
                     colors={
@@ -849,115 +979,132 @@ export default function Scan() {
           <View
             style={[styles.cameraContainer, responsiveStyles.cameraContainer]}
           >
-            <CameraView
-              style={styles.camera}
-              facing="back"
-              onBarcodeScanned={
-                scanningEnabled &&
-                !scanned &&
-                !modalVisible &&
-                !errorModalVisible &&
-                isScreenFocused
-                  ? handleBarcodeScanned
-                  : undefined
-              }
-              barcodeScannerSettings={{
-                barcodeTypes: [
-                  "qr",
-                  "pdf417",
-                  "aztec",
-                  "ean13",
-                  "ean8",
-                  "upc_e",
-                  "code128",
-                  "code39",
-                ],
-              }}
-            >
-              <View style={styles.scannerOverlay}>
-                <View
-                  style={[styles.scannerFrame, responsiveStyles.scannerFrame]}
-                >
-                  {/* Animated corners - opacity based on scanning state */}
+            {scanningEnabled && !scanDelayActive ? (
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                onBarcodeScanned={
+                  scanningEnabled &&
+                  !scanned &&
+                  !modalVisible &&
+                  !errorModalVisible &&
+                  isScreenFocused
+                    ? handleBarcodeScanned
+                    : undefined
+                }
+                barcodeScannerSettings={{
+                  barcodeTypes: [
+                    "qr",
+                    "pdf417",
+                    "aztec",
+                    "ean13",
+                    "ean8",
+                    "upc_e",
+                    "code128",
+                    "code39",
+                  ],
+                }}
+              >
+                <View style={styles.scannerOverlay}>
                   <View
-                    style={[
-                      styles.corner,
-                      styles.topLeft,
-                      responsiveStyles.corner,
-                      { opacity: scanningEnabled ? 1 : 0.3 },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.corner,
-                      styles.topRight,
-                      responsiveStyles.corner,
-                      { opacity: scanningEnabled ? 1 : 0.3 },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.corner,
-                      styles.bottomLeft,
-                      responsiveStyles.corner,
-                      { opacity: scanningEnabled ? 1 : 0.3 },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.corner,
-                      styles.bottomRight,
-                      responsiveStyles.corner,
-                      { opacity: scanningEnabled ? 1 : 0.3 },
-                    ]}
-                  />
-
-                  {/* Animated scan line - only visible when scanning */}
-                  {scanningEnabled && !modalVisible && !errorModalVisible && (
-                    <Animated.View
+                    style={[styles.scannerFrame, responsiveStyles.scannerFrame]}
+                  >
+                    {/* Animated corners - opacity based on scanning state */}
+                    <View
                       style={[
-                        styles.scanLine,
-                        responsiveStyles.scanLine,
-                        {
-                          transform: [
-                            {
-                              translateY: scanLineAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [
-                                  0,
-                                  responsiveStyles.scannerFrame.height - 50,
-                                ],
-                              }),
-                            },
-                          ],
-                          opacity: scanLineAnim.interpolate({
-                            inputRange: [0, 0.5, 1],
-                            outputRange: [0.8, 1, 0.8],
-                          }),
-                        },
+                        styles.corner,
+                        styles.topLeft,
+                        responsiveStyles.corner,
+                        { opacity: scanningEnabled ? 1 : 0.3 },
                       ]}
                     />
-                  )}
+                    <View
+                      style={[
+                        styles.corner,
+                        styles.topRight,
+                        responsiveStyles.corner,
+                        { opacity: scanningEnabled ? 1 : 0.3 },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.corner,
+                        styles.bottomLeft,
+                        responsiveStyles.corner,
+                        { opacity: scanningEnabled ? 1 : 0.3 },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.corner,
+                        styles.bottomRight,
+                        responsiveStyles.corner,
+                        { opacity: scanningEnabled ? 1 : 0.3 },
+                      ]}
+                    />
 
-                  {/* Scanning status indicator */}
-                  {(!scanningEnabled || scanDelayActive) && (
-                    <View style={styles.scanStatusContainer}>
-                      <View style={styles.scanStatusCard}>
-                        <Text style={styles.scanStatusText}>
-                          {modalVisible
-                            ? "Processing..."
-                            : errorModalVisible
-                            ? "Error occurred"
-                            : scanDelayActive
-                            ? "Preparing scanner..."
-                            : "Scanner paused"}
-                        </Text>
+                    {/* Animated scan line - only visible when scanning */}
+                    {scanningEnabled && !modalVisible && !errorModalVisible && (
+                      <Animated.View
+                        style={[
+                          styles.scanLine,
+                          responsiveStyles.scanLine,
+                          {
+                            transform: [
+                              {
+                                translateY: scanLineAnim.interpolate({
+                                  inputRange: [0, 1],
+                                  outputRange: [
+                                    0,
+                                    responsiveStyles.scannerFrame.height - 50,
+                                  ],
+                                }),
+                              },
+                            ],
+                            opacity: scanLineAnim.interpolate({
+                              inputRange: [0, 0.5, 1],
+                              outputRange: [0.8, 1, 0.8],
+                            }),
+                          },
+                        ]}
+                      />
+                    )}
+
+                    {/* Scanning status indicator */}
+                    {(!scanningEnabled || scanDelayActive) && (
+                      <View style={styles.scanStatusContainer}>
+                        <View style={styles.scanStatusCard}>
+                          <Text style={styles.scanStatusText}>
+                            {modalVisible
+                              ? "Processing..."
+                              : errorModalVisible
+                              ? "Error occurred"
+                              : scanDelayActive
+                              ? "Preparing scanner..."
+                              : "Scanner paused"}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                  )}
+                    )}
+                  </View>
                 </View>
+              </CameraView>
+            ) : (
+              <View
+                style={[
+                  styles.camera,
+                  {
+                    backgroundColor: "#000",
+                    justifyContent: "center",
+                    alignItems: "center",
+                  },
+                ]}
+              >
+                <Text style={{ color: "#fff", fontSize: 16 }}>
+                  Preparing scanner...
+                </Text>
               </View>
-            </CameraView>
+            )}
           </View>
         </View>
       </ScrollView>
@@ -1192,6 +1339,176 @@ export default function Scan() {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Student List Modal */}
+      <Modal
+        transparent={true}
+        visible={studentListModalVisible}
+        animationType="none"
+        onRequestClose={handleCloseStudentListModal}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={handleCloseStudentListModal}
+          />
+          <Animated.View
+            style={[
+              styles.studentListModalContent,
+              {
+                opacity: studentListFadeAnim,
+                transform: [{ scale: studentListScaleAnim }],
+                height: dimensions.height * 0.8,
+                width: currentIsTablet ? "80%" : "90%",
+                maxWidth: currentIsTablet ? 600 : 400,
+              },
+            ]}
+          >
+            {selectedCategory && (
+              <>
+                {/* Modal Header */}
+                <View style={styles.studentListHeader}>
+                  <Text
+                    style={[
+                      styles.studentListTitle,
+                      { fontSize: currentIsTablet ? 24 : 20 },
+                    ]}
+                  >
+                    {getCategoryDetails(selectedCategory).title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.studentListSubtitle,
+                      { fontSize: currentIsTablet ? 16 : 14 },
+                    ]}
+                  >
+                    {getSelectedAttendanceType().label} Session •{" "}
+                    {new Date().toLocaleDateString()}
+                  </Text>
+                  <View style={styles.studentCountBadge}>
+                    <Text style={styles.studentCountText}>
+                      {getCategoryDetails(selectedCategory).students.length}{" "}
+                      Student
+                      {getCategoryDetails(selectedCategory).students.length !==
+                      1
+                        ? "s"
+                        : ""}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Loading Overlay */}
+                {studentListLoading && (
+                  <View style={styles.loadingOverlay}>
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="large" color="#667eea" />
+                    </View>
+                  </View>
+                )}
+
+                {/* Student List */}
+                <View style={styles.studentListBody}>
+                  {getCategoryDetails(selectedCategory).students.length > 0 ? (
+                    <ScrollView
+                      style={styles.studentScrollView}
+                      contentContainerStyle={{ paddingBottom: 20 }}
+                      showsVerticalScrollIndicator={true}
+                      bounces={false}
+                    >
+                      {getCategoryDetails(selectedCategory).students.map(
+                        (student, index) => (
+                          <View
+                            key={student.id}
+                            style={[
+                              styles.studentListItem,
+                              {
+                                marginBottom:
+                                  index ===
+                                  getCategoryDetails(selectedCategory).students
+                                    .length -
+                                    1
+                                    ? 0
+                                    : 12,
+                        
+                              },
+                            ]}
+                          >
+                            <View style={styles.studentItemLeft}>
+                              <View
+                                style={[
+                                  styles.studentAvatar,
+                                  {
+                                    backgroundColor:
+                                      getCategoryDetails(selectedCategory)
+                                        .color + "20",
+                                  },
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.studentAvatarText,
+                                    {
+                                      color:
+                                        getCategoryDetails(selectedCategory)
+                                          .color,
+                                    },
+                                  ]}
+                                >
+                                  {student.name.charAt(0).toUpperCase()}
+                                </Text>
+                              </View>
+                              <View style={styles.studentInfoContainer}>
+                                <Text
+                                  style={[
+                                    styles.studentName,
+                                  
+                                  ]}
+              
+                                >
+                                  {student.name}
+                                </Text>
+                                <View
+                                  style={[
+                                    styles.studentStatusBadge,
+                                    {
+                                      backgroundColor:
+                                        selectedCategory.includes("present")
+                                          ? "#4CAF50"
+                                          : "#f44336",
+                                    },
+                                  ]}
+                                >
+                                  <Text style={styles.studentStatusText}>
+                                    {selectedCategory.includes("present")
+                                      ? "Present"
+                                      : "Absent"}
+                                  </Text>
+                                </View>
+                              </View>
+                            </View>
+                            
+                          </View>
+                        )
+                      )}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.emptyStateContainer}>
+                      <Text style={styles.emptyStateIcon}>📝</Text>
+                      <Text style={styles.emptyStateTitle}>
+                        No Students Found
+                      </Text>
+                      <Text style={styles.emptyStateMessage}>
+                        No students in this category for the current session.
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -1209,9 +1526,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
   },
+  studentListLoading: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+  },
   loadingText: {
-    fontSize: 64,
-    marginBottom: 20,
+    fontSize: 16,
+    color: "#666",
+    marginTop: 12,
+    fontWeight: "500",
   },
   loadingSubtext: {
     fontSize: 16,
@@ -1516,7 +1841,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.8)",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 20,
+    paddingHorizontal: 15,
   },
   modalContent: {
     backgroundColor: "#fff",
@@ -1591,11 +1916,12 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.9)",
     textAlign: "center",
   },
-  studentInfo: {
-    backgroundColor: "#f8f9fa",
-    borderRadius: 15,
-    padding: 20,
-  },
+  studentInfoContainer: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 0,
+    // backgroundColor: '#999999'
+  },  
   studentInfoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1740,5 +2066,157 @@ const styles = StyleSheet.create({
   },
   errorCountdownText: {
     color: "#FF6B6B",
+  },
+
+  // Student List Modal
+
+  studentListModalContent: {
+    backgroundColor: "#ffff",
+    borderRadius: 18,
+    overflow: "hidden",
+    elevation: 22,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+  },
+  studentListHeader: {
+    alignItems: "center",
+    paddingVertical: 14,
+    backgroundColor: "#f8f9fa",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e9ecef",
+  },
+  studentListIconContainer: {
+    marginBottom: 15,
+    borderRadius: 50,
+    overflow: "hidden",
+  },
+  studentListIconGradient: {
+    width: 60,
+    height: 60,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  studentListIcon: {
+    fontSize: 28,
+  },
+  studentListTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 5,
+    textAlign: "center",
+  },
+  studentListSubtitle: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 15,
+  },
+
+  studentCountBadge: {
+    backgroundColor: "#667eea",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+  },
+  studentCountText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  studentListBody: {
+    padding: 20,
+    flex:1
+  },
+  loadingIcon: {
+    fontSize: 48,
+    marginBottom: 15,
+  },
+  studentScrollView: {
+    padding: 8,
+    flex: 1
+  },
+  loadingOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1000,
+  },
+  emptyStateContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  emptyStateIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+    opacity: 0.6,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+    textAlign: "center",
+    marginBottom: 8,
+  },
+  emptyStateMessage: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    lineHeight: 20,
+    opacity: 0.8,
+  },
+  studentListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+  },
+  studentItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  studentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  studentAvatarText: {
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  studentName: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 4, // Add some bottom margin for the status badge
+  },
+  studentStatusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    minWidth: 50,
+    alignItems: "center",
+    alignSelf: "flex-start", // Align to start since it's now under the name
+  },
+
+  studentStatusText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "600",
   },
 });

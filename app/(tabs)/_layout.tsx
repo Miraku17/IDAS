@@ -1,80 +1,97 @@
 import { Tabs } from "expo-router";
-import React from "react";
-import { Platform } from "react-native";
+import React, { useEffect } from "react";
+import { Platform, Dimensions, View } from "react-native";
 
 import { HapticTab } from "@/components/HapticTab";
 import { IconSymbol } from "@/components/ui/IconSymbol";
-import TabBarBackground from "@/components/ui/TabBarBackground";
-import { Colors } from "@/constants/Colors";
-import { useColorScheme } from "@/hooks/useColorScheme";
+import { useInitializeTablesStore } from "@/store/initializeTablesStore";
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { initializeTables, isInitialized, isInitializing, initializationError } =
+    useInitializeTablesStore();
+
+  // Screen size detection
+  const { width: screenWidth } = Dimensions.get("window");
+  const isSmallScreen = screenWidth < 375;
+  const isLargeScreen = screenWidth > 600;
+
+  // Initialize database
+  useEffect(() => {
+    const initDB = async () => {
+      try {
+        console.log("🚀 Starting database initialization from TabLayout...");
+        await initializeTables();
+        console.log("✅ Database initialization completed in TabLayout");
+      } catch (error) {
+        console.error("❌ Database initialization failed in TabLayout:", error);
+      }
+    };
+    initDB();
+  }, [initializeTables]);
+
+  // Log DB state
+  useEffect(() => {
+    if (isInitialized) {
+      console.log("✅ Database is ready for use");
+    } else if (isInitializing) {
+      console.log("⏳ Database initialization in progress...");
+    } else if (initializationError) {
+      console.error("❌ Database initialization error:", initializationError);
+    }
+  }, [isInitialized, isInitializing, initializationError]);
+
+  // Responsive tab bar dimensions
+  const getResponsiveDimensions = () => {
+    if (isSmallScreen) {
+      return { height: 58, iconSize: { focused: 24, unfocused: 22 } };
+    } else if (isLargeScreen) {
+      return { height: 72, iconSize: { focused: 30, unfocused: 28 } };
+    } else {
+      return { height: 64, iconSize: { focused: 26, unfocused: 24 } };
+    }
+  };
+  const dimensions = getResponsiveDimensions();
 
   return (
     <Tabs
       screenOptions={{
-        // Enhanced color scheme
-        tabBarActiveTintColor: "#10B981", // Green theme to match your app
-        tabBarInactiveTintColor: Colors[colorScheme ?? "light"].tabIconDefault || "#6B7280",
-        
-        // Header configuration
+        tabBarActiveTintColor: "#16A34A", // modern green
+        tabBarInactiveTintColor: "#9CA3AF", // gray-400
         headerShown: false,
-        
-        // Interactive elements
         tabBarButton: HapticTab,
-        tabBarBackground: TabBarBackground,
-        
-        // Hide labels
         tabBarShowLabel: false,
-        
-        // Compact styling
-        tabBarStyle: Platform.select({
-          ios: {
-            position: "absolute",
-            backgroundColor: "rgba(255, 255, 255, 0.95)",
-            borderTopWidth: 0,
-            borderTopLeftRadius: 15,
-            borderTopRightRadius: 15,
-            height: 60,
-            paddingTop: 8,
-            paddingBottom: 20,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: -2 },
-            shadowOpacity: 0.08,
-            shadowRadius: 6,
-          },
-          android: {
-            backgroundColor: "#FFFFFF",
-            borderTopWidth: 0,
-            borderTopLeftRadius: 15,
-            borderTopRightRadius: 15,
-            height: 55,
-            paddingTop: 6,
-            paddingBottom: 6,
-            elevation: 12,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: -1 },
-            shadowOpacity: 0.1,
-            shadowRadius: 6,
-          },
-          default: {
-            backgroundColor: "#FFFFFF",
-            borderTopWidth: 0,
-            height: 55,
-            paddingTop: 6,
-            paddingBottom: 6,
-          },
-        }),
-        
-        // Icon styling
-        tabBarIconStyle: {
-          marginTop: 0,
+
+        // Floating pill style
+        tabBarStyle: {
+          position: "absolute",
+          backgroundColor: "#FFFFFF",
+          borderTopWidth: 0,
+          height: dimensions.height,
+          marginHorizontal: isLargeScreen ? 24 : 16,
+          marginBottom: Platform.OS === "ios" ? 20 : 16,
+          borderRadius: 28,
+          overflow: "hidden",
+          paddingBottom: 0,
+          paddingTop: 0,
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 10,
         },
-        
-        // Item styling - more compact
+
+        // Center icons vertically
+        tabBarIconStyle: {
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+        },
+
         tabBarItemStyle: {
-          paddingVertical: 4,
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          minWidth: isSmallScreen ? 60 : isLargeScreen ? 90 : 75,
         },
       }}
     >
@@ -83,41 +100,57 @@ export default function TabLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
-              size={focused ? 26 : 24} 
-              name={focused ? "house.fill" : "house"} 
-              color={color} 
-            />
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+              <IconSymbol
+                size={
+                  focused
+                    ? dimensions.iconSize.focused
+                    : dimensions.iconSize.unfocused
+                }
+                name={focused ? "house.fill" : "house"}
+                color={color}
+              />
+            </View>
           ),
           tabBarAccessibilityLabel: "Home Tab",
         }}
       />
-      
       <Tabs.Screen
         name="scan"
         options={{
-          title: "Scan QR",
+          title: "Scan",
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
-              size={focused ? 26 : 24} 
-              name={focused ? "qrcode" : "qrcode"} 
-              color={color} 
-            />
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+              <IconSymbol
+                size={
+                  focused
+                    ? dimensions.iconSize.focused
+                    : dimensions.iconSize.unfocused
+                }
+                name={focused ? "camera.fill" : "camera"}
+                color={color}
+              />
+            </View>
           ),
-          tabBarAccessibilityLabel: "QR Code Scanner Tab",
+          tabBarAccessibilityLabel: "Camera Scanner Tab",
         }}
       />
-      
       <Tabs.Screen
         name="record"
         options={{
           title: "Records",
           tabBarIcon: ({ color, focused }) => (
-            <IconSymbol 
-              size={focused ? 26 : 24} 
-              name={focused ? "doc.text.fill" : "doc.text"} 
-              color={color} 
-            />
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+              <IconSymbol
+                size={
+                  focused
+                    ? dimensions.iconSize.focused
+                    : dimensions.iconSize.unfocused
+                }
+                name={focused ? "doc.text.fill" : "doc.text"}
+                color={color}
+              />
+            </View>
           ),
           tabBarAccessibilityLabel: "Attendance Records Tab",
         }}
