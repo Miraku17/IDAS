@@ -41,20 +41,11 @@ export default function HomeScreen() {
     fetchStudentAttendance,
   } = useAttendanceStore();
 
-  const fetchStudentAttendanceData = async (studentId) => {
-    try {
-      console.log("Fetching attendance for student ID:", studentId);
-      const attendance = await fetchStudentAttendance(studentId);
-      setStudentAttendanceData(attendance);
-    } catch (error) {
-      console.error("Error fetching student attendance:", error);
-      setStudentAttendanceData([]);
-    }
-  };
 
-  useEffect(() => {
-    fetchAllStudents();
-  }, []);
+
+  // useEffect(() => {
+  //   fetchAllStudents();
+  // }, []);
 
   // Update the useEffect that filters students
   useEffect(() => {
@@ -167,10 +158,18 @@ export default function HomeScreen() {
   };
 
   // UPDATE your students button:
-  const openStudentsModal = () => {
+  const openStudentsModal = async () => {
     setModalView("students");
     setModalVisible(true);
+    
+    // ✅ Fetch all students only when the modal is opened
+    try {
+      await fetchAllStudents();
+    } catch (error) {
+      console.error("Error fetching students:", error);
+    }
   };
+
 
   return (
     <View style={styles.container}>
@@ -926,7 +925,7 @@ const styles = StyleSheet.create({
     color: "#1F2937",
   },
   modalAttendanceTitle: {
-    fontSize: 8,
+    fontSize: 12,
     fontWeight: "600",
     color: "#1F2937",
   },

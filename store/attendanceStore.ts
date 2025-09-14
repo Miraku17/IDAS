@@ -240,7 +240,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
          ORDER BY a.id DESC`
       );
   
-      console.table(rows); // ✅ Debug in console
+      // console.table(rows); // ✅ Debug in console
       console.log(rows); // ✅ Debug in console
 
       return rows;
@@ -606,7 +606,7 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
       );
       
       console.log(`✅ Fetched ${students.length} students`);
-      console.table(students.slice(0, 5)); // Debug: show first 5 students
+      // console.table(students.slice(0, 5)); // Debug: show first 5 students
       
       set({ allStudents: students, loading: false });
       return students;
