@@ -45,6 +45,9 @@ type AttendanceState = {
   loading: boolean;
   error: string | null;
   studentsByCategory: StudentsByCategory | null;
+  allStudents: Array<{ id: number; name: string; code: string }> | null; 
+  
+
 
   markAttendance: (studentId: number, session: string) => Promise<void>;
   fetchRecentScans: () => Promise<void>;
@@ -54,7 +57,8 @@ type AttendanceState = {
   resetAttendance: () => Promise<void>;
   fetchAllAttendance: () => Promise<Attendance[]>; 
   fetchStudentsByCategory: (session: string, date?: string) => Promise<void>;
-
+  fetchAllStudents: () => Promise<void>;
+  fetchStudentAttendance: (studentId: number) => Promise<Attendance[]>;
 };
 
 export const useAttendanceStore = create<AttendanceState>((set, get) => ({
@@ -63,6 +67,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
   sessionCounts: {},
   loading: false,
   error: null,
+  allStudents: null,
 
   markAttendance: async (studentId, session) => {
     try {
@@ -236,6 +241,8 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       );
   
       console.table(rows); // ✅ Debug in console
+      console.log(rows); // ✅ Debug in console
+
       return rows;
     } catch (err: any) {
       console.error("❌ Error fetching attendance:", err.message);
@@ -584,6 +591,55 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
       
     } catch (err: any) {
       console.error("❌ Error fetching students by category:", err.message);
+      set({ error: err.message, loading: false });
+      throw err;
+    }
+  },
+
+  fetchAllStudents: async () => {
+    try {
+      console.log("👥 Fetching all students...");
+      set({ loading: true, error: null });
+      
+      const students = await db.getAllAsync<{ id: number; name: string; code: string }>(
+        `SELECT id, name, code FROM students ORDER BY name ASC`
+      );
+      
+      console.log(`✅ Fetched ${students.length} students`);
+      console.table(students.slice(0, 5)); // Debug: show first 5 students
+      
+      set({ allStudents: students, loading: false });
+      return students;
+      
+    } catch (err: any) {
+      console.error("❌ Error fetching all students:", err.message);
+      set({ error: err.message, loading: false, allStudents: null });
+      throw err;
+    }
+  },
+
+  fetchStudentAttendance: async (studentId: number) => {
+    try {
+      console.log("📚 Fetching attendance for student ID:", studentId);
+      set({ loading: true, error: null });
+      
+      const attendance = await db.getAllAsync<Attendance>(
+        `SELECT a.id, a.student_id, a.session, a.date, a.time, a.status, s.name, s.code
+         FROM attendance a
+         JOIN students s ON a.student_id = s.id
+         WHERE a.student_id = ?
+         ORDER BY a.date DESC, a.time DESC`,
+        [studentId]
+      );
+      
+      console.log(`✅ Found ${attendance.length} attendance records for student ID ${studentId}`);
+      console.log("📋 Student attendance data:", attendance);
+      
+      set({ loading: false });
+      return attendance;
+      
+    } catch (err: any) {
+      console.error("❌ Error fetching student attendance:", err.message);
       set({ error: err.message, loading: false });
       throw err;
     }
