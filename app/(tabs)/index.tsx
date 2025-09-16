@@ -9,6 +9,7 @@ import {
   Modal,
   TextInput,
   FlatList,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -41,20 +42,12 @@ export default function HomeScreen() {
     fetchStudentAttendance,
   } = useAttendanceStore();
 
-  const fetchStudentAttendanceData = async (studentId) => {
-    try {
-      console.log("Fetching attendance for student ID:", studentId);
-      const attendance = await fetchStudentAttendance(studentId);
-      setStudentAttendanceData(attendance);
-    } catch (error) {
-      console.error("Error fetching student attendance:", error);
-      setStudentAttendanceData([]);
-    }
-  };
+  // useEffect(() => {
+  //   fetchAllStudents();
+  // }, []);
 
-  useEffect(() => {
-    fetchAllStudents();
-  }, []);
+  const screenWidth = Dimensions.get("window").width;
+  const isSmallScreen = screenWidth < 380;
 
   // Update the useEffect that filters students
   useEffect(() => {
@@ -167,9 +160,16 @@ export default function HomeScreen() {
   };
 
   // UPDATE your students button:
-  const openStudentsModal = () => {
+  const openStudentsModal = async () => {
     setModalView("students");
     setModalVisible(true);
+
+    // ✅ Fetch all students only when the modal is opened
+    try {
+      await fetchAllStudents();
+    } catch (error) {
+      console.error("Error fetching students:", error);
+    }
   };
 
   return (
@@ -283,15 +283,37 @@ export default function HomeScreen() {
 
             {/* Students Section Button */}
             <TouchableOpacity
-              style={styles.studentsButton}
+              style={[
+                styles.studentsButton,
+                isSmallScreen && styles.studentsButtonSmall,
+              ]}
               onPress={openStudentsModal}
             >
-              <View style={styles.studentsButtonContent}>
+              <View
+                style={[
+                  styles.studentsButtonContent,
+                  isSmallScreen && styles.studentsButtonContentSmall,
+                ]}
+              >
                 <Ionicons name="people-outline" size={24} color="#059669" />
-                <Text style={styles.studentsButtonText}>View All Students</Text>
-                <Text style={styles.studentsButtonSubtext}>
-                  Search and manage student list
-                </Text>
+                <View style={styles.studentsTextContainer}>
+                  <Text
+                    style={[
+                      styles.studentsButtonText,
+                      isSmallScreen && styles.studentsButtonTextSmall,
+                    ]}
+                  >
+                    View All Students
+                  </Text>
+                  <Text
+                    style={[
+                      styles.studentsButtonSubtext,
+                      isSmallScreen && styles.studentsButtonSubtextSmall,
+                    ]}
+                  >
+                    Search and manage student list
+                  </Text>
+                </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#6B7280" />
             </TouchableOpacity>
@@ -819,23 +841,51 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.2)",
+    minHeight: 80, // Ensure minimum height
   },
+
+  // Small screen variant
+  studentsButtonSmall: {
+    padding: 16,
+    minHeight: 70,
+  },
+
+  // Update existing studentsButtonContent style
   studentsButtonContent: {
     flexDirection: "row",
     alignItems: "center",
     flex: 1,
     gap: 12,
   },
+
+  // Small screen variant
+  studentsButtonContentSmall: {
+    gap: 10,
+  },
+
+  studentsTextContainer: {
+    flex: 1,
+    justifyContent: "center",
+  },
+
   studentsButtonText: {
     fontSize: 16,
     fontWeight: "600",
     color: "#1F2937",
     flex: 1,
   },
+  studentsButtonTextSmall: {
+    fontSize: 14,
+    lineHeight: 18,
+  },
   studentsButtonSubtext: {
     fontSize: 12,
     color: "#6B7280",
-    marginTop: 2,
+    lineHeight: 16,
+  },
+  studentsButtonSubtextSmall: {
+    fontSize: 11,
+    lineHeight: 14,
   },
 
   // Bottom Section
@@ -926,7 +976,7 @@ const styles = StyleSheet.create({
     color: "#1F2937",
   },
   modalAttendanceTitle: {
-    fontSize: 8,
+    fontSize: 12,
     fontWeight: "600",
     color: "#1F2937",
   },
@@ -1122,54 +1172,54 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   dateHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
     paddingHorizontal: 4,
   },
   dateHeaderText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginRight: 12,
   },
   dateHeaderLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: "#E5E7EB",
   },
   sessionItem: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 1,
     borderLeftWidth: 3,
-    borderLeftColor: '#E5E7EB',
+    borderLeftColor: "#E5E7EB",
   },
   sessionInfo: {
     flex: 1,
   },
   sessionName: {
     fontSize: 15,
-    fontWeight: '500',
-    color: '#1F2937',
+    fontWeight: "500",
+    color: "#1F2937",
     marginBottom: 4,
   },
   sessionTime: {
     fontSize: 13,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   sessionStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -1177,7 +1227,7 @@ const styles = StyleSheet.create({
   },
   sessionStatusText: {
     fontSize: 12,
-    fontWeight: '500',
-    textTransform: 'capitalize',
+    fontWeight: "500",
+    textTransform: "capitalize",
   },
 });

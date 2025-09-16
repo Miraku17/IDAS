@@ -49,6 +49,7 @@ export default function RecordsScreen() {
     fetchAttendanceByDate,
     fetchSessionCounts,
     exportAttendanceByDate,
+    exportAllAttendanceReport, 
     loading,
   } = useAttendanceStore();
 
@@ -145,6 +146,35 @@ export default function RecordsScreen() {
       }
       await exportAttendanceByDate(selectedDate, "pdf");
       Alert.alert("Success", "PDF file exported successfully!");
+    } catch (error: any) {
+      Alert.alert("Export Failed", error.message);
+    }
+  };
+
+  const handleExportWholeAttendance = async () => {
+    try {
+      // Show confirmation dialog
+      Alert.alert(
+        "Export Complete Attendance Report",
+        "This will export all attendance records from all dates. Continue?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Export PDF",
+            onPress: async () => {
+              try {
+                await exportAllAttendanceReport("pdf");
+                Alert.alert("Success", "Complete attendance report exported successfully!");
+              } catch (error: any) {
+                Alert.alert("Export Failed", error.message);
+              }
+            },
+          },
+        ]
+      );
     } catch (error: any) {
       Alert.alert("Export Failed", error.message);
     }
@@ -262,6 +292,22 @@ export default function RecordsScreen() {
                     <Text style={styles.exportButtonIcon}>📄</Text>
                     <Text style={styles.exportButtonText}>
                       Export PDF Report
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.exportButton, styles.wholeReportButton]}
+                  onPress={handleExportWholeAttendance}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={["#E65100", "#BF360C"]}
+                    style={styles.exportButtonGradient}
+                  >
+                    <Text style={styles.exportButtonIcon}>📊</Text>
+                    <Text style={styles.exportButtonText}>
+                      Export Complete Report
                     </Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -466,6 +512,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
+    marginBottom: 12,
+  },
+  wholeReportButton: {
+    marginBottom: 0,
   },
   exportButtonGradient: {
     paddingVertical: 24,

@@ -1,9 +1,8 @@
 import { create } from "zustand";
 import * as SQLite from "expo-sqlite";
-import * as FileSystem from "expo-file-system";
-import { printToFileAsync } from 'expo-print';
-import * as Sharing from 'expo-sharing';
-
+import { File, Directory, Paths } from "expo-file-system";
+import { printToFileAsync } from "expo-print";
+import * as Sharing from "expo-sharing";
 
 const db = SQLite.openDatabaseSync("students.db");
 
@@ -25,8 +24,6 @@ export type StudentsByCategory = {
   absentFemales: Array<{ id: number; name: string; code: string }>;
 };
 
-
-
 export type TodayStats = {
   totalMales: number;
   totalFemales: number;
@@ -45,20 +42,20 @@ type AttendanceState = {
   loading: boolean;
   error: string | null;
   studentsByCategory: StudentsByCategory | null;
-  allStudents: Array<{ id: number; name: string; code: string }> | null; 
-  
-
+  allStudents: Array<{ id: number; name: string; code: string }> | null;
 
   markAttendance: (studentId: number, session: string) => Promise<void>;
   fetchRecentScans: () => Promise<void>;
   fetchTodayStats: (session: string) => Promise<void>;
   fetchSessionCounts: (date: string) => Promise<void>;
-  fetchAttendanceByDate: (date: string) => Promise<void>; 
+  fetchAttendanceByDate: (date: string) => Promise<void>;
   resetAttendance: () => Promise<void>;
-  fetchAllAttendance: () => Promise<Attendance[]>; 
+  fetchAllAttendance: () => Promise<Attendance[]>;
   fetchStudentsByCategory: (session: string, date?: string) => Promise<void>;
   fetchAllStudents: () => Promise<void>;
   fetchStudentAttendance: (studentId: number) => Promise<Attendance[]>;
+  generatePDF: (rows: any[], date: string) => Promise<string>;
+  generateAllAttendancePDF: (rows: any[]) => Promise<string>;
 };
 
 export const useAttendanceStore = create<AttendanceState>((set, get) => ({
@@ -73,9 +70,9 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     try {
       console.log("🟢 [markAttendance] Starting...");
       console.log("➡️ Student ID:", studentId, "Session:", session);
-  
+
       set({ loading: true, error: null });
-  
+
       const now = new Date();
       const date = now.toLocaleDateString("en-CA");
       const time = now.toLocaleTimeString("en-PH", {
@@ -83,21 +80,21 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         minute: "2-digit",
         hour12: true,
       });
-  
+
       console.log("📅 Date:", date, "| ⏰ Time:", time);
-  
+
       // Check if already marked
       const existing = await db.getFirstAsync<{ id: number }>(
         `SELECT id FROM attendance WHERE student_id = ? AND session = ? AND date = ?`,
         [studentId, session, date]
       );
       console.log("🔍 Existing record:", existing);
-  
+
       if (existing) {
         console.warn("⚠️ Already marked for this session");
         return { success: false, message: "Already marked for this session" };
       }
-  
+
       // Insert new attendance record
       console.log("📝 Inserting new attendance record...");
       await db.runAsync(
@@ -106,15 +103,14 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         [studentId, session, date, time]
       );
       console.log("✅ Insert successful!");
-  
+
       // Refresh scans
       console.log("🔄 Fetching recent scans...");
       await get().fetchRecentScans();
       console.log("✅ Recent scans updated");
-  
+
       // ✅ ADD THIS RETURN STATEMENT FOR SUCCESS CASE
       return { success: true, message: "Attendance recorded successfully" };
-  
     } catch (err: any) {
       console.error("❌ [markAttendance] Error:", err.message);
       set({ error: err.message });
@@ -124,7 +120,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       console.log("🔵 [markAttendance] Finished");
     }
   },
-  
+
   fetchRecentScans: async () => {
     const scans = await db.getAllAsync<Attendance>(
       `SELECT a.id, s.name, s.code, a.time, a.session, a.date, a.status, a.student_id
@@ -174,7 +170,8 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         absentMales: totalMales - presentMales,
         absentFemales: totalFemales - presentFemales,
         totalPresent: presentMales + presentFemales,
-        totalAbsent: totalMales + totalFemales - (presentMales + presentFemales),
+        totalAbsent:
+          totalMales + totalFemales - (presentMales + presentFemales),
       },
     });
   },
@@ -207,7 +204,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     set({ sessionCounts: counts });
   },
 
-
   fetchAttendanceByDate: async (date) => {
     set({ loading: true, error: null });
     try {
@@ -239,8 +235,8 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
          JOIN students s ON a.student_id = s.id
          ORDER BY a.id DESC`
       );
-  
-      console.table(rows); // ✅ Debug in console
+
+      // console.table(rows); // ✅ Debug in console
       console.log(rows); // ✅ Debug in console
 
       return rows;
@@ -250,43 +246,12 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     }
   },
 
-  exportAttendance: async () => {
-    try {
-      const rows = await db.getAllAsync(
-        `SELECT a.id, s.name AS student_name, s.code AS student_code,
-                a.session, a.date, a.time, a.status
-         FROM attendance a
-         JOIN students s ON a.student_id = s.id
-         ORDER BY a.date DESC, a.time DESC`
-      );
-  
-      // Convert rows → CSV string
-      let csv = "id,student_name,student_code,session,date,time,status\n";
-      rows.forEach((row) => {
-        csv += `${row.id},"${row.student_name}",${row.student_code},${row.session},${row.date},${row.time},${row.status}\n`;
-      });
-  
-      // Save CSV to file
-      const fileUri = FileSystem.documentDirectory + "attendance_export.csv";
-      await FileSystem.writeAsStringAsync(fileUri, csv, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
-  
-      console.log("✅ Attendance exported to:", fileUri);
-      return fileUri;
-    } catch (err) {
-      console.error("❌ Error exporting attendance:", err);
-      throw err;
-    }
-  },
-  
-  // CSV and PDF
-
+ 
   // Add these functions to your store
-exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
+  exportAttendanceByDate: async (date: string, format: "csv" | "pdf") => {
     try {
       console.log(`📤 Exporting ${format.toUpperCase()} for date:`, date);
-      
+
       // Query attendance for specific date
       const rows = await db.getAllAsync<Attendance>(
         `SELECT a.id, s.name AS student_name, s.code AS student_code,
@@ -297,12 +262,12 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
          ORDER BY a.time ASC`,
         [date]
       );
-  
+
       if (rows.length === 0) {
-        throw new Error('No attendance records found for this date');
+        throw new Error("No attendance records found for this date");
       }
-  
-      if (format === 'csv') {
+
+      if (format === "csv") {
         return await get().generateCSV(rows, date);
       } else {
         return await get().generatePDF(rows, date);
@@ -312,77 +277,19 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
       throw err;
     }
   },
-  
- 
-  generateCSV: async (rows: any[], date: string) => {
-    // Group rows by session
-    const groupedBySession: Record<string, any[]> = {};
-    
-    rows.forEach((row) => {
-      const session = row.session;
-      if (!groupedBySession[session]) {
-        groupedBySession[session] = [];
-      }
-      groupedBySession[session].push(row);
-    });
-  
-    let csv = "";
-    
-    // Create sections for each session
-    Object.keys(groupedBySession).forEach((session, index) => {
-      const sessionRows = groupedBySession[session];
-      
-      // Add session header
-      csv += `\n=== ${session.toUpperCase()} SESSION ===\n`;
-      csv += "Student Name,Student Code,Date,Time,Status\n";
-      
-      // Add rows for this session
-      sessionRows.forEach((row) => {
-        csv += `"${row.student_name}",${row.student_code},${row.date},${row.time},${row.status}\n`;
-      });
-      
-      // Add session summary
-      csv += `\nTotal ${session} attendance: ${sessionRows.length}\n`;
-      
-      // Add spacing between sessions (except for the last one)
-      if (index < Object.keys(groupedBySession).length - 1) {
-        csv += "\n";
-      }
-    });
-  
-    // Add overall summary at the end
-    // csv += `\n=== DAILY SUMMARY ===\n`;
-    // csv += `Total attendance records: ${rows.length}\n`;
-    // csv += `Sessions recorded: ${Object.keys(groupedBySession).join(', ')}\n`;
-  
-    const fileName = `attendance_${date}_grouped.csv`;
-    const fileUri = FileSystem.documentDirectory + fileName;
-    
-    await FileSystem.writeAsStringAsync(fileUri, csv, {
-      encoding: FileSystem.EncodingType.UTF8,
-    });
-  
-    // Share the file
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(fileUri);
-    }
-  
-    console.log("✅ Grouped CSV exported:", fileUri);
-    return fileUri;
-  },
 
-  
+
   generatePDF: async (rows: any[], date: string) => {
     const formatDate = new Date(date).toLocaleDateString("en-US", {
       weekday: "long",
       year: "numeric",
-      month: "long", 
+      month: "long",
       day: "numeric",
     });
-  
+
     // Group rows by session
     const groupedBySession: Record<string, any[]> = {};
-    
+
     rows.forEach((row) => {
       const session = row.session;
       if (!groupedBySession[session]) {
@@ -390,7 +297,7 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
       }
       groupedBySession[session].push(row);
     });
-  
+
     const html = `
       <html>
         <head>
@@ -458,12 +365,15 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
           <div class="summary">
             <strong>Date:</strong> ${formatDate}<br>
             <strong>Total Records:</strong> ${rows.length}<br>
-            <strong>Sessions:</strong> ${Object.keys(groupedBySession).join(', ')}
+            <strong>Sessions:</strong> ${Object.keys(groupedBySession).join(
+              ", "
+            )}
           </div>
           
-          ${Object.keys(groupedBySession).map(session => {
-            const sessionRows = groupedBySession[session];
-            return `
+          ${Object.keys(groupedBySession)
+            .map((session) => {
+              const sessionRows = groupedBySession[session];
+              return `
               <h2>${session.toUpperCase()} Session</h2>
               <table>
                 <tr>
@@ -472,94 +382,112 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
                   <th>Time</th>
                   <th>Status</th>
                 </tr>
-                ${sessionRows.map(row => `
+                ${sessionRows
+                  .map(
+                    (row) => `
                   <tr>
                     <td>${row.student_name}</td>
                     <td>${row.student_code}</td>
                     <td>${row.time}</td>
                     <td>${row.status}</td>
                   </tr>
-                `).join('')}
+                `
+                  )
+                  .join("")}
               </table>
               <div class="session-summary">
-                <strong>${session} Total:</strong> ${sessionRows.length} students
+                <strong>${session} Total:</strong> ${
+                sessionRows.length
+              } students
               </div>
             `;
-          }).join('')}
+            })
+            .join("")}
           
         </body>
       </html>
     `;
-  
+
     const { uri } = await printToFileAsync({
       html,
       base64: false,
-      width: 612,  // Letter width in points
+      width: 612, // Letter width in points
       height: 1008, // Long page height (1.5x normal letter height)
     });
-  
-    // Create custom filename with date
-    const customFileName = `${date}_REYES_attendance_grade_12.pdf`;
-    const customFileUri = FileSystem.documentDirectory + customFileName;
-    
-    // Copy the file with custom name
-    await FileSystem.copyAsync({
-      from: uri,
-      to: customFileUri
-    });
-  
-    // Share the file with custom name
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(customFileUri, {
-        dialogTitle: 'Export Attendance Report',
-        mimeType: 'application/pdf'
-      });
+
+    // The printToFileAsync gives you a temporary file URI (probably in cache or temp)
+    // Now wrap that in a File
+    const tempFile = new File(uri); // you can construct from existing URI
+    const newFileName = `${date}_REYES_attendance_grade_12.pdf`;
+    const destFile = new File(Paths.document, newFileName);
+
+    // If dest already exists, remove
+    if (await destFile.exists) {
+      await destFile.delete();
     }
-  
-    console.log("✅ Custom PDF exported:", customFileUri);
-    return customFileUri;
+
+    // Copy or move temp to dest
+    await tempFile.move(destFile);
+    // After move, the tempFile.uri updates to dest.
+
+    // Or alternatively can copy then delete
+
+    // Share the PDF
+    await Sharing.shareAsync(destFile.uri, {
+      dialogTitle: "Export Attendance Report (PDF)",
+      mimeType: "application/pdf",
+    });
+
+    console.log("✅ Custom PDF exported:", destFile.uri);
+    return destFile.uri;
   },
 
-  
   fetchStudentsByCategory: async (session: string, date?: string) => {
     try {
       set({ loading: true, error: null });
-      
+
       const targetDate = date || new Date().toLocaleDateString("en-CA");
       console.log("🔍 Fetching for session:", session, "date:", targetDate);
-      
+
       // Get all students
-      const allStudents = await db.getAllAsync<{ id: number; name: string; code: string }>(
-        `SELECT id, name, code FROM students ORDER BY name`
-      );
+      const allStudents = await db.getAllAsync<{
+        id: number;
+        name: string;
+        code: string;
+      }>(`SELECT id, name, code FROM students ORDER BY name`);
       console.log("👥 All students:", allStudents.length);
       console.log("🧪 First student from DB:", allStudents[0]); // Debug: Check student structure
-      
+
       // Get present students for the session/date
       const presentStudents = await db.getAllAsync<{ student_id: number }>(
         `SELECT student_id FROM attendance WHERE date = ? AND session = ?`,
         [targetDate, session]
       );
       console.log("✅ Present students:", presentStudents.length);
-      console.log("🧪 Present student IDs:", presentStudents.map(p => p.student_id)); // Debug: Check present IDs
-      
-      const presentIds = new Set(presentStudents.map(p => p.student_id));
-      
+      console.log(
+        "🧪 Present student IDs:",
+        presentStudents.map((p) => p.student_id)
+      ); // Debug: Check present IDs
+
+      const presentIds = new Set(presentStudents.map((p) => p.student_id));
+
       // Categorize students
       const result = {
         presentMales: [],
         presentFemales: [],
         absentMales: [],
-        absentFemales: []
+        absentFemales: [],
       };
-      
-      allStudents.forEach(student => {
+
+      allStudents.forEach((student) => {
         const codeNum = parseInt(student.code.split("-").pop() || "0", 10);
         const isMale = codeNum >= 1 && codeNum <= 13;
         const isPresent = presentIds.has(student.id);
-        
-        console.log(`🧪 Student: ${student.name}, Code: ${student.code}, CodeNum: ${codeNum}, isMale: ${isMale}, isPresent: ${isPresent}`); // Debug each student
-        
+
+        console.log(
+          `🧪 Student: ${student.name}, Code: ${student.code}, CodeNum: ${codeNum}, isMale: ${isMale}, isPresent: ${isPresent}`
+        ); // Debug each student
+
         if (isMale) {
           if (isPresent) {
             result.presentMales.push(student);
@@ -574,21 +502,23 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
           }
         }
       });
-      
+
       // Debug: Log actual arrays, not just lengths
       console.log("🧪 Present males (actual array):", result.presentMales);
-      console.log("🧪 Absent females sample:", result.absentFemales.slice(0, 2)); // Show first 2
-      
+      console.log(
+        "🧪 Absent females sample:",
+        result.absentFemales.slice(0, 2)
+      ); // Show first 2
+
       console.log("📊 Final result counts:", {
         presentMales: result.presentMales.length,
         presentFemales: result.presentFemales.length,
         absentMales: result.absentMales.length,
-        absentFemales: result.absentFemales.length
+        absentFemales: result.absentFemales.length,
       });
-      
+
       set({ studentsByCategory: result, loading: false });
       return result;
-      
     } catch (err: any) {
       console.error("❌ Error fetching students by category:", err.message);
       set({ error: err.message, loading: false });
@@ -600,17 +530,18 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
     try {
       console.log("👥 Fetching all students...");
       set({ loading: true, error: null });
-      
-      const students = await db.getAllAsync<{ id: number; name: string; code: string }>(
-        `SELECT id, name, code FROM students ORDER BY name ASC`
-      );
-      
+
+      const students = await db.getAllAsync<{
+        id: number;
+        name: string;
+        code: string;
+      }>(`SELECT id, name, code FROM students ORDER BY name ASC`);
+
       console.log(`✅ Fetched ${students.length} students`);
-      console.table(students.slice(0, 5)); // Debug: show first 5 students
-      
+      // console.table(students.slice(0, 5)); // Debug: show first 5 students
+
       set({ allStudents: students, loading: false });
       return students;
-      
     } catch (err: any) {
       console.error("❌ Error fetching all students:", err.message);
       set({ error: err.message, loading: false, allStudents: null });
@@ -622,7 +553,7 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
     try {
       console.log("📚 Fetching attendance for student ID:", studentId);
       set({ loading: true, error: null });
-      
+
       const attendance = await db.getAllAsync<Attendance>(
         `SELECT a.id, a.student_id, a.session, a.date, a.time, a.status, s.name, s.code
          FROM attendance a
@@ -631,18 +562,164 @@ exportAttendanceByDate: async (date: string, format: 'csv' | 'pdf') => {
          ORDER BY a.date DESC, a.time DESC`,
         [studentId]
       );
-      
-      console.log(`✅ Found ${attendance.length} attendance records for student ID ${studentId}`);
+
+      console.log(
+        `✅ Found ${attendance.length} attendance records for student ID ${studentId}`
+      );
       console.log("📋 Student attendance data:", attendance);
-      
+
       set({ loading: false });
       return attendance;
-      
     } catch (err: any) {
       console.error("❌ Error fetching student attendance:", err.message);
       set({ error: err.message, loading: false });
       throw err;
     }
   },
+
+  exportAllAttendanceReport: async (format: "pdf") => {
+    try {
+      console.log(
+        `📤 Exporting ALL attendance records as ${format.toUpperCase()}`
+      );
+
+      // Get all attendance records (no date filter)
+      const rows = await db.getAllAsync<Attendance>(
+        `SELECT a.id, s.name AS student_name, s.code AS student_code,
+                a.session, a.date, a.time, a.status
+         FROM attendance a
+         JOIN students s ON a.student_id = s.id
+         ORDER BY a.date DESC, a.time DESC`
+      );
+
+      if (rows.length === 0) {
+        throw new Error("No attendance records found");
+      }
+
+      return await get().generateAllAttendancePDF(rows);
+    } catch (err: any) {
+      console.error(`❌ Error exporting all attendance:`, err.message);
+      throw err;
+    }
+  },
+
+  generateAllAttendancePDF: async (rows: any[]) => {
+    // Group rows by date first, then by session
+    const groupedByDate: Record<string, Record<string, any[]>> = {};
+
+    rows.forEach((row) => {
+      if (!groupedByDate[row.date]) {
+        groupedByDate[row.date] = {};
+      }
+      if (!groupedByDate[row.date][row.session]) {
+        groupedByDate[row.date][row.session] = [];
+      }
+      groupedByDate[row.date][row.session].push(row);
+    });
+
+    const html = `
+      <html>
+        <head>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 20px; 
+              font-size: 10px; 
+            }
+            h1 { color: #087444; text-align: center; margin-bottom: 20px; font-size: 20px; }
+            h2 { color: #087444; font-size: 14px; margin-top: 20px; }
+            h3 { color: #087444; font-size: 12px; margin-top: 15px; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 9px; }
+            th, td { border: 1px solid #ddd; padding: 4px; text-align: left; }
+            th { background-color: #4CAF50; color: white; font-weight: bold; }
+            .summary { background-color: #f9f9f9; padding: 10px; margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          
+          <h1>REYES Complete Attendance Report - Grade 12</h1>
+          <div class="summary">
+            <strong>Total Records:</strong> ${rows.length}<br>
+            <strong>Date Range:</strong> ${
+              Object.keys(groupedByDate).sort()[0]
+            } to ${Object.keys(groupedByDate).sort().pop()}<br>
+            <strong>Total Days:</strong> ${Object.keys(groupedByDate).length}
+          </div>
+          
+          ${Object.keys(groupedByDate)
+            .sort()
+            .reverse()
+            .map((date) => {
+              const dateFormatted = new Date(date).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              });
+              const sessionsForDate = groupedByDate[date];
+
+              return `
+              <h2>${dateFormatted}</h2>
+              ${Object.keys(sessionsForDate)
+                .map((session) => {
+                  const sessionRows = sessionsForDate[session];
+                  return `
+                  <h3>${session.toUpperCase()} Session (${
+                    sessionRows.length
+                  } students)</h3>
+                  <table>
+                    <tr>
+                      <th>Name</th>
+                      <th>Time</th>
+                      <th>Status</th>
+                    </tr>
+                    ${sessionRows
+                      .map(
+                        (row) => `
+                      <tr>
+                        <td>${row.student_name}</td>
+                        <td>${row.time}</td>
+                        <td>${row.status}</td>
+                      </tr>
+                    `
+                      )
+                      .join("")}
+                  </table>
+                `;
+                })
+                .join("")}
+            `;
+            })
+            .join("")}
+        </body>
+      </html>
+    `;
+
+    const { uri } = await printToFileAsync({
+      html,
+      base64: false,
+      width: 612,
+      height: 1008,
+    });
+
+    const tempFile = new File(uri);
+    const newFileName = `ALL_REYES_attendance_grade_12.pdf`;
+    const destFile = new File(Paths.document, newFileName);
+
+    if (await destFile.exists) {
+      await destFile.delete();
+    }
+
+    await tempFile.move(destFile);
+
+    await Sharing.shareAsync(destFile.uri, {
+      dialogTitle: "Export Complete Attendance Report",
+      mimeType: "application/pdf",
+    });
+
+    console.log("✅ Complete attendance PDF exported:", destFile.uri);
+    return destFile.uri;
+  },
+
 
 }));
