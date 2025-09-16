@@ -1,9 +1,8 @@
 import { create } from "zustand";
 import * as SQLite from "expo-sqlite";
-import * as FileSystemLegacy from "expo-file-system/legacy";
+import { File, Directory, Paths } from "expo-file-system";
 import { printToFileAsync } from "expo-print";
 import * as Sharing from "expo-sharing";
-import { Asset } from "expo-asset";
 
 const db = SQLite.openDatabaseSync("students.db");
 
@@ -55,7 +54,8 @@ type AttendanceState = {
   fetchStudentsByCategory: (session: string, date?: string) => Promise<void>;
   fetchAllStudents: () => Promise<void>;
   fetchStudentAttendance: (studentId: number) => Promise<Attendance[]>;
-  exportAllAttendanceReport: (format: "csv" | "pdf") => Promise<string>;
+  generatePDF: (rows: any[], date: string) => Promise<string>;
+  generateAllAttendancePDF: (rows: any[]) => Promise<string>;
 };
 
 export const useAttendanceStore = create<AttendanceState>((set, get) => ({
@@ -246,39 +246,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     }
   },
 
-  exportAttendance: async () => {
-    try {
-      const rows = await db.getAllAsync(
-        `SELECT a.id, s.name AS student_name, s.code AS student_code,
-                a.session, a.date, a.time, a.status
-         FROM attendance a
-         JOIN students s ON a.student_id = s.id
-         ORDER BY a.date DESC, a.time DESC`
-      );
-
-      // Convert rows → CSV string
-      let csv = "id,student_name,student_code,session,date,time,status\n";
-      rows.forEach((row) => {
-        csv += `${row.id},"${row.student_name}",${row.student_code},${row.session},${row.date},${row.time},${row.status}\n`;
-      });
-
-      // Save CSV to file
-      const fileUri =
-        FileSystemLegacy.documentDirectory + "attendance_export.csv";
-      await FileSystemLegacy.writeAsStringAsync(fileUri, csv, {
-        encoding: FileSystemLegacy.EncodingType.UTF8,
-      });
-
-      console.log("✅ Attendance exported to:", fileUri);
-      return fileUri;
-    } catch (err) {
-      console.error("❌ Error exporting attendance:", err);
-      throw err;
-    }
-  },
-
-  // CSV and PDF
-
+ 
   // Add these functions to your store
   exportAttendanceByDate: async (date: string, format: "csv" | "pdf") => {
     try {
@@ -310,6 +278,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     }
   },
 
+
   generatePDF: async (rows: any[], date: string) => {
     const formatDate = new Date(date).toLocaleDateString("en-US", {
       weekday: "long",
@@ -317,9 +286,10 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       month: "long",
       day: "numeric",
     });
-  
+
     // Group rows by session
     const groupedBySession: Record<string, any[]> = {};
+
     rows.forEach((row) => {
       const session = row.session;
       if (!groupedBySession[session]) {
@@ -327,173 +297,150 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       }
       groupedBySession[session].push(row);
     });
-  
-    // ✅ Load logo as Base64 (same way as generateAllAttendancePDF)
-    const logoAsset = Asset.fromModule(require("../assets/images/mnstslogo.png"));
-    await logoAsset.downloadAsync();
-    const logoBase64 = await FileSystemLegacy.readAsStringAsync(
-      logoAsset.localUri!,
-      { encoding: FileSystemLegacy.EncodingType.Base64 }
-    );
-  
+
     const html = `
-  <html>
-    <head>
-      <style>
-        body {
-          font-family: Arial, sans-serif; 
-          margin: 30px; 
-          font-size: 12px;
-          line-height: 1.4;
-          position: relative;
-          background-color: transparent;
-        }
-        .watermark {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          opacity: 0.1;
-          width: 300px;
-          height: auto;
-          z-index: 9999;
-          pointer-events: none;
-        }
-        h1 { 
-          color: #087444; 
-          text-align: center; 
-          margin-bottom: 30px; 
-          font-size: 24px;
-          background-color: transparent;
-          position: relative;
-          z-index: 2;
-        }
-        h2 { 
-          color: #087444; 
-          border-bottom: 2px solid #4CAF50; 
-          padding-bottom: 8px; 
-          margin-top: 25px; 
-          font-size: 18px;
-          background-color: transparent;
-          position: relative;
-          z-index: 2;
-        }
-  
-        /* ✅ Fully transparent tables */
-        table { 
-          width: 100%; 
-          border-collapse: collapse; 
-          margin-top: 15px; 
-          margin-bottom: 20px; 
-          font-size: 11px;
-          background-color: transparent;
-        }
-        th, td { 
-          border: 1px solid rgba(221, 221, 221, 0.6); 
-          padding: 6px; 
-          text-align: left; 
-          background-color: transparent;
-        }
-        th { 
-          background-color: rgba(76, 175, 80, 0.1); 
-          color: #4e4c4f; 
-          font-weight: bold;
-        }
-        tr:nth-child(even) td {
-          background-color: rgba(248, 248, 248, 0.05);
-        }
-  
-        /* ✅ Fully transparent summary sections */
-        .summary { 
-          background-color: rgba(249, 249, 249, 0.1); 
-          padding: 15px; 
-          margin: 10px 0; 
-          border-radius: 5px;
-          border: 1px solid rgba(221, 221, 221, 0.3);
-        }
-        .session-summary { 
-          background-color: rgba(232, 245, 232, 0.1); 
-          padding: 8px; 
-          margin: 10px 0; 
-          border-radius: 5px; 
-          font-size: 11px;
-          border: 1px solid rgba(76, 175, 80, 0.2);
-        }
-        
-        /* ✅ Make sure all text is readable over watermark */
-        .summary strong,
-        .session-summary strong {
-          color: #2c5530;
-        }
-        
-        /* ✅ Optional: Add subtle text shadow for better readability */
-        h1, h2 {
-          text-shadow: 1px 1px 2px rgba(255, 255, 255, 0.8);
-        }
-      </style>
-    </head>
-    <body>
-      <img src="data:image/png;base64,${logoBase64}" class="watermark" />
-      
-      <h1>REYES Attendance Grade 12</h1>
-      <div class="summary">
-        <strong>Date:</strong> ${formatDate}<br>
-        <strong>Total Records:</strong> ${rows.length}<br>
-        <strong>Sessions:</strong> ${Object.keys(groupedBySession).join(", ")}
-      </div>
-  
-      ${Object.keys(groupedBySession)
-        .map((session) => {
-          const sessionRows = groupedBySession[session];
-          return `
-            <h2>${session.toUpperCase()} Session</h2>
-            <table>
-              <tr>
-                <th>Student Name</th>
-                <th>Student Code</th>
-                <th>Time</th>
-                <th>Status</th>
-              </tr>
-              ${sessionRows
-                .map(
-                  (row) => `
+      <html>
+        <head>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              margin: 30px; 
+              font-size: 12px;
+              line-height: 1.4;
+            }
+            h1 { 
+              color: #087444; 
+              text-align: center; 
+              margin-bottom: 30px; 
+              font-size: 24px;
+            }
+            h2 { 
+              color: #087444; 
+              border-bottom: 2px solid #4CAF50; 
+              padding-bottom: 8px; 
+              margin-top: 25px; 
+              font-size: 18px;
+            }
+            table { 
+              width: 100%; 
+              border-collapse: collapse; 
+              margin-top: 15px; 
+              margin-bottom: 20px; 
+              font-size: 11px;
+            }
+            th, td { 
+              border: 1px solid #ddd; 
+              padding: 6px; 
+              text-align: left; 
+            }
+            th { 
+              background-color: #4CAF50; 
+              color: #4e4c4f; 
+              font-weight: bold;
+            }
+            .summary { 
+              background-color: #f9f9f9; 
+              padding: 15px; 
+              margin: 10px 0; 
+              border-radius: 5px; 
+            }
+            .session-summary { 
+              background-color: #e8f5e8; 
+              padding: 8px; 
+              margin: 10px 0; 
+              border-radius: 5px; 
+              font-size: 11px;
+            }
+            .overall-summary { 
+              background-color: #4CAF50; 
+              color: white; 
+              padding: 15px; 
+              margin: 20px 0; 
+              border-radius: 5px; 
+            }
+          </style>
+        </head>
+        <body>
+          <h1>REYES Attendance Grade 12</h1>
+          <div class="summary">
+            <strong>Date:</strong> ${formatDate}<br>
+            <strong>Total Records:</strong> ${rows.length}<br>
+            <strong>Sessions:</strong> ${Object.keys(groupedBySession).join(
+              ", "
+            )}
+          </div>
+          
+          ${Object.keys(groupedBySession)
+            .map((session) => {
+              const sessionRows = groupedBySession[session];
+              return `
+              <h2>${session.toUpperCase()} Session</h2>
+              <table>
                 <tr>
-                  <td>${row.student_name}</td>
-                  <td>${row.student_code}</td>
-                  <td>${row.time}</td>
-                  <td>${row.status}</td>
+                  <th>Student Name</th>
+                  <th>Student Code</th>
+                  <th>Time</th>
+                  <th>Status</th>
                 </tr>
-              `
-                )
-                .join("")}
-            </table>
-            <div class="session-summary">
-              <strong>${session} Total:</strong> ${sessionRows.length} students
-            </div>
-          `;
-        })
-        .join("")}
-    </body>
-  </html>
-  `;
-  
-    const { uri } = await printToFileAsync({ html, base64: false });
-    const customFileName = `${date}_REYES_attendance_grade_12.pdf`;
-    const customFileUri = FileSystemLegacy.documentDirectory + customFileName;
-  
-    await FileSystemLegacy.copyAsync({ from: uri, to: customFileUri });
-  
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(customFileUri, {
-        dialogTitle: "Export Attendance Report",
-        mimeType: "application/pdf",
-      });
+                ${sessionRows
+                  .map(
+                    (row) => `
+                  <tr>
+                    <td>${row.student_name}</td>
+                    <td>${row.student_code}</td>
+                    <td>${row.time}</td>
+                    <td>${row.status}</td>
+                  </tr>
+                `
+                  )
+                  .join("")}
+              </table>
+              <div class="session-summary">
+                <strong>${session} Total:</strong> ${
+                sessionRows.length
+              } students
+              </div>
+            `;
+            })
+            .join("")}
+          
+        </body>
+      </html>
+    `;
+
+    const { uri } = await printToFileAsync({
+      html,
+      base64: false,
+      width: 612, // Letter width in points
+      height: 1008, // Long page height (1.5x normal letter height)
+    });
+
+    // The printToFileAsync gives you a temporary file URI (probably in cache or temp)
+    // Now wrap that in a File
+    const tempFile = new File(uri); // you can construct from existing URI
+    const newFileName = `${date}_REYES_attendance_grade_12.pdf`;
+    const destFile = new File(Paths.document, newFileName);
+
+    // If dest already exists, remove
+    if (await destFile.exists) {
+      await destFile.delete();
     }
-  
-    console.log("✅ Custom PDF exported:", customFileUri);
-    return customFileUri;
+
+    // Copy or move temp to dest
+    await tempFile.move(destFile);
+    // After move, the tempFile.uri updates to dest.
+
+    // Or alternatively can copy then delete
+
+    // Share the PDF
+    await Sharing.shareAsync(destFile.uri, {
+      dialogTitle: "Export Attendance Report (PDF)",
+      mimeType: "application/pdf",
+    });
+
+    console.log("✅ Custom PDF exported:", destFile.uri);
+    return destFile.uri;
   },
-  
 
   fetchStudentsByCategory: async (session: string, date?: string) => {
     try {
@@ -630,7 +577,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
     }
   },
 
-  exportAllAttendanceReport: async (format: "csv" | "pdf") => {
+  exportAllAttendanceReport: async (format: "pdf") => {
     try {
       console.log(
         `📤 Exporting ALL attendance records as ${format.toUpperCase()}`
@@ -649,7 +596,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
         throw new Error("No attendance records found");
       }
 
-      // For PDF export of ALL records
       return await get().generateAllAttendancePDF(rows);
     } catch (err: any) {
       console.error(`❌ Error exporting all attendance:`, err.message);
@@ -658,18 +604,6 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
   },
 
   generateAllAttendancePDF: async (rows: any[]) => {
-    // Load and convert the logo to base64
-    const logoAsset = Asset.fromModule(
-      require("../assets/images/mnstslogo.png")
-    );
-    await logoAsset.downloadAsync();
-    const logoBase64 = await FileSystemLegacy.readAsStringAsync(
-      logoAsset.localUri!,
-      {
-        encoding: FileSystemLegacy.EncodingType.Base64,
-      }
-    );
-
     // Group rows by date first, then by session
     const groupedByDate: Record<string, Record<string, any[]>> = {};
 
@@ -691,19 +625,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
               font-family: Arial, sans-serif; 
               margin: 20px; 
               font-size: 10px; 
-              position: relative;
             }
-        .watermark {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0.1;
-  z-index: -1;
-  width: 300px;
-  height: auto;
-  pointer-events: none;
-}
             h1 { color: #087444; text-align: center; margin-bottom: 20px; font-size: 20px; }
             h2 { color: #087444; font-size: 14px; margin-top: 20px; }
             h3 { color: #087444; font-size: 12px; margin-top: 15px; }
@@ -714,7 +636,7 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
           </style>
         </head>
         <body>
-<img src="data:image/png;base64,${logoBase64}" class="watermark" alt="MNSTS Logo" />          
+          
           <h1>REYES Complete Attendance Report - Grade 12</h1>
           <div class="summary">
             <strong>Total Records:</strong> ${rows.length}<br>
@@ -780,22 +702,24 @@ export const useAttendanceStore = create<AttendanceState>((set, get) => ({
       height: 1008,
     });
 
-    const customFileName = `ALL_REYES_attendance_grade_12.pdf`;
-    const customFileUri = FileSystemLegacy.documentDirectory + customFileName;
+    const tempFile = new File(uri);
+    const newFileName = `ALL_REYES_attendance_grade_12.pdf`;
+    const destFile = new File(Paths.document, newFileName);
 
-    await FileSystemLegacy.copyAsync({
-      from: uri,
-      to: customFileUri,
-    });
-
-    if (await Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(customFileUri, {
-        dialogTitle: "Export Complete Attendance Report",
-        mimeType: "application/pdf",
-      });
+    if (await destFile.exists) {
+      await destFile.delete();
     }
 
-    console.log("✅ Complete attendance PDF exported:", customFileUri);
-    return customFileUri;
+    await tempFile.move(destFile);
+
+    await Sharing.shareAsync(destFile.uri, {
+      dialogTitle: "Export Complete Attendance Report",
+      mimeType: "application/pdf",
+    });
+
+    console.log("✅ Complete attendance PDF exported:", destFile.uri);
+    return destFile.uri;
   },
+
+
 }));
